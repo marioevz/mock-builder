@@ -107,7 +107,7 @@ func NewMockBuilder(
 	}
 
 	for _, o := range opts {
-		if err = o(m); err != nil {
+		if err = o.apply(m); err != nil {
 			return nil, err
 		}
 	}
@@ -1217,7 +1217,7 @@ func (m *MockBuilder) HandleMockEnableErrorOnHeaderRequest(
 		"Received request to enable error on payload request",
 	)
 
-	if err = WithErrorOnHeaderRequestAtSlot(slot)(m); err != nil {
+	if err = WithErrorOnHeaderRequestAtSlot(slot).apply(m); err != nil {
 		logrus.WithFields(logrus.Fields{
 			"builder_id": m.cfg.id,
 			"err":        err,
@@ -1277,7 +1277,7 @@ func (m *MockBuilder) HandleMockEnableErrorOnPayloadReveal(
 		"Received request to enable error on payload reveal",
 	)
 
-	if err = WithErrorOnPayloadRevealAtSlot(slot)(m); err != nil {
+	if err = WithErrorOnPayloadRevealAtSlot(slot).apply(m); err != nil {
 		logrus.WithFields(logrus.Fields{
 			"builder_id": m.cfg.id,
 			"err":        err,
@@ -1362,7 +1362,7 @@ func (m *MockBuilder) HandleMockEnableInvalidatePayloadAttributes(
 		"Received request to enable payload attributes invalidation",
 	)
 
-	if err = WithPayloadAttributesInvalidatorAtSlot(slot, invTyp)(m); err != nil {
+	if err = WithPayloadAttributesInvalidatorAtSlot(slot, invTyp).apply(m); err != nil {
 		logrus.WithFields(logrus.Fields{
 			"builder_id": m.cfg.id,
 			"err":        err,
@@ -1447,7 +1447,7 @@ func (m *MockBuilder) HandleMockEnableInvalidatePayload(
 		"Received request to enable payload attributes invalidation",
 	)
 
-	if err = WithPayloadInvalidatorAtSlot(slot, invTyp)(m); err != nil {
+	if err = WithPayloadInvalidatorAtSlot(slot, invTyp).apply(m); err != nil {
 		logrus.WithFields(logrus.Fields{
 			"builder_id": m.cfg.id,
 			"err":        err,
