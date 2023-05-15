@@ -39,209 +39,266 @@ type config struct {
 
 	mutex sync.Mutex
 }
+type Option struct {
+	apply       func(m *MockBuilder) error
+	description string
+}
 
-type Option func(m *MockBuilder) error
+func (o Option) MarshalText() ([]byte, error) {
+	return []byte(o.description), nil
+}
 
 func WithID(id int) Option {
-	return func(m *MockBuilder) error {
-		m.cfg.mutex.Lock()
-		defer m.cfg.mutex.Unlock()
-		m.cfg.id = id
-		return nil
+	return Option{
+		apply: func(m *MockBuilder) error {
+			m.cfg.mutex.Lock()
+			defer m.cfg.mutex.Unlock()
+			m.cfg.id = id
+			return nil
+		},
+		description: fmt.Sprintf("WithID(%d)", id),
 	}
 }
 
 func WithHost(host string) Option {
-	return func(m *MockBuilder) error {
-		m.cfg.mutex.Lock()
-		defer m.cfg.mutex.Unlock()
-		m.cfg.host = host
-		return nil
+	return Option{
+		apply: func(m *MockBuilder) error {
+			m.cfg.mutex.Lock()
+			defer m.cfg.mutex.Unlock()
+			m.cfg.host = host
+			return nil
+		},
+		description: fmt.Sprintf("WithHost(%s)", host),
 	}
 }
 
 func WithPort(port int) Option {
-	return func(m *MockBuilder) error {
-		m.cfg.mutex.Lock()
-		defer m.cfg.mutex.Unlock()
-		m.cfg.port = port
-		return nil
+	return Option{
+		apply: func(m *MockBuilder) error {
+			m.cfg.mutex.Lock()
+			defer m.cfg.mutex.Unlock()
+			m.cfg.port = port
+			return nil
+		},
+		description: fmt.Sprintf("WithPort(%d)", port),
 	}
 }
 
 func WithExtraDataWatermark(wm string) Option {
-	return func(m *MockBuilder) error {
-		m.cfg.mutex.Lock()
-		defer m.cfg.mutex.Unlock()
-		m.cfg.extraDataWatermark = wm
-		return nil
+	return Option{
+		apply: func(m *MockBuilder) error {
+			m.cfg.mutex.Lock()
+			defer m.cfg.mutex.Unlock()
+			m.cfg.extraDataWatermark = wm
+			return nil
+		},
+		description: fmt.Sprintf("WithExtraDataWatermark(%s)", wm),
 	}
 }
 
 func WithExternalIP(ip net.IP) Option {
-	return func(m *MockBuilder) error {
-		m.cfg.mutex.Lock()
-		defer m.cfg.mutex.Unlock()
-		m.cfg.externalIP = ip
-		return nil
+	return Option{
+		apply: func(m *MockBuilder) error {
+			m.cfg.mutex.Lock()
+			defer m.cfg.mutex.Unlock()
+			m.cfg.externalIP = ip
+			return nil
+		},
+		description: fmt.Sprintf("WithExternalIP(%s)", ip),
 	}
 }
 
 func WithSpec(spec *beacon.Spec) Option {
-	return func(m *MockBuilder) error {
-		m.cfg.mutex.Lock()
-		defer m.cfg.mutex.Unlock()
-		m.cfg.spec = spec
-		return nil
+	return Option{
+		apply: func(m *MockBuilder) error {
+			m.cfg.mutex.Lock()
+			defer m.cfg.mutex.Unlock()
+			m.cfg.spec = spec
+			return nil
+		},
+		description: "WithSpec", // TODO: actually format the spec
 	}
 }
 
 func WithBeaconGenesisTime(t beacon.Timestamp) Option {
-	return func(m *MockBuilder) error {
-		m.cfg.mutex.Lock()
-		defer m.cfg.mutex.Unlock()
-		m.cfg.beaconGenesisTime = t
-		return nil
+	return Option{
+		apply: func(m *MockBuilder) error {
+			m.cfg.mutex.Lock()
+			defer m.cfg.mutex.Unlock()
+			m.cfg.beaconGenesisTime = t
+			return nil
+		},
+		description: fmt.Sprintf("WithBeaconGenesisTime(%d)", t),
 	}
 }
 
 func WithPayloadWeiValueBump(bump *big.Int) Option {
-	return func(m *MockBuilder) error {
-		m.cfg.mutex.Lock()
-		defer m.cfg.mutex.Unlock()
-		m.cfg.payloadWeiValueModifier = func(orig *big.Int) (*big.Int, error) {
-			ret := new(big.Int).Set(orig)
-			ret.Add(ret, bump)
-			return ret, nil
-		}
-		return nil
+	return Option{
+		apply: func(m *MockBuilder) error {
+			m.cfg.mutex.Lock()
+			defer m.cfg.mutex.Unlock()
+			m.cfg.payloadWeiValueModifier = func(orig *big.Int) (*big.Int, error) {
+				ret := new(big.Int).Set(orig)
+				ret.Add(ret, bump)
+				return ret, nil
+			}
+			return nil
+		},
+		description: fmt.Sprintf("WithPayloadWeiValueBump(%d)", bump),
 	}
 }
 
 func WithPayloadWeiValueMultiplier(mult *big.Int) Option {
-	return func(m *MockBuilder) error {
-		m.cfg.mutex.Lock()
-		defer m.cfg.mutex.Unlock()
-		m.cfg.payloadWeiValueModifier = func(orig *big.Int) (*big.Int, error) {
-			ret := new(big.Int).Set(orig)
-			ret.Mul(ret, mult)
-			return ret, nil
-		}
-		return nil
+	return Option{
+		apply: func(m *MockBuilder) error {
+			m.cfg.mutex.Lock()
+			defer m.cfg.mutex.Unlock()
+			m.cfg.payloadWeiValueModifier = func(orig *big.Int) (*big.Int, error) {
+				ret := new(big.Int).Set(orig)
+				ret.Mul(ret, mult)
+				return ret, nil
+			}
+			return nil
+		},
+		description: fmt.Sprintf("WithPayloadWeiValueMultiplier(%d)", mult),
 	}
 }
 
 func WithPayloadAttributesModifier(pam PayloadAttributesModifier) Option {
-	return func(m *MockBuilder) error {
-		m.cfg.mutex.Lock()
-		defer m.cfg.mutex.Unlock()
-		m.cfg.payloadAttrModifier = pam
-		return nil
+	return Option{
+		apply: func(m *MockBuilder) error {
+			m.cfg.mutex.Lock()
+			defer m.cfg.mutex.Unlock()
+			m.cfg.payloadAttrModifier = pam
+			return nil
+		},
+		description: "WithPayloadAttributesModifier",
 	}
 }
 
 func WithPayloadModifier(pm PayloadModifier) Option {
-	return func(m *MockBuilder) error {
-		m.cfg.mutex.Lock()
-		defer m.cfg.mutex.Unlock()
-		m.cfg.payloadModifier = pm
-		return nil
+	return Option{
+		apply: func(m *MockBuilder) error {
+			m.cfg.mutex.Lock()
+			defer m.cfg.mutex.Unlock()
+			m.cfg.payloadModifier = pm
+			return nil
+		},
+		description: "WithPayloadModifier",
 	}
 }
 
 func WithErrorOnHeaderRequest(e ErrorProducer) Option {
-	return func(m *MockBuilder) error {
-		m.cfg.mutex.Lock()
-		defer m.cfg.mutex.Unlock()
-		m.cfg.errorOnHeaderRequest = e
-		return nil
+	return Option{
+		apply: func(m *MockBuilder) error {
+			m.cfg.mutex.Lock()
+			defer m.cfg.mutex.Unlock()
+			m.cfg.errorOnHeaderRequest = e
+			return nil
+		},
+		description: "WithErrorOnHeaderRequest",
 	}
 }
 
 func WithErrorOnHeaderRequestAtEpoch(epoch beacon.Epoch) Option {
-	return func(m *MockBuilder) error {
-		m.cfg.mutex.Lock()
-		defer m.cfg.mutex.Unlock()
+	return Option{
+		apply: func(m *MockBuilder) error {
+			m.cfg.mutex.Lock()
+			defer m.cfg.mutex.Unlock()
 
-		var spec = m.cfg.spec
-		if spec == nil {
-			return fmt.Errorf("unknown spec")
-		}
-		startSlot, err := spec.EpochStartSlot(epoch)
-		if err != nil {
-			return err
-		}
-
-		m.cfg.errorOnHeaderRequest = func(s beacon.Slot) error {
-			if s >= startSlot {
-				return fmt.Errorf("error generator")
+			var spec = m.cfg.spec
+			if spec == nil {
+				return fmt.Errorf("unknown spec")
+			}
+			startSlot, err := spec.EpochStartSlot(epoch)
+			if err != nil {
+				return err
 			}
 
+			m.cfg.errorOnHeaderRequest = func(s beacon.Slot) error {
+				if s >= startSlot {
+					return fmt.Errorf("error generator")
+				}
+
+				return nil
+			}
 			return nil
-		}
-		return nil
+		},
+		description: fmt.Sprintf("WithErrorOnHeaderRequestAtEpoch(%d)", epoch),
 	}
 }
 
 func WithErrorOnHeaderRequestAtSlot(slot beacon.Slot) Option {
-	return func(m *MockBuilder) error {
-		m.cfg.mutex.Lock()
-		defer m.cfg.mutex.Unlock()
-		m.cfg.errorOnHeaderRequest = func(s beacon.Slot) error {
-			if s >= slot {
-				return fmt.Errorf("error generator")
+	return Option{
+		apply: func(m *MockBuilder) error {
+			m.cfg.mutex.Lock()
+			defer m.cfg.mutex.Unlock()
+			m.cfg.errorOnHeaderRequest = func(s beacon.Slot) error {
+				if s >= slot {
+					return fmt.Errorf("error generator")
+				}
+				return nil
 			}
 			return nil
-		}
-		return nil
+		},
+		description: fmt.Sprintf("WithErrorOnHeaderRequestAtSlot(%d)", slot),
 	}
 }
 
 func WithErrorOnPayloadReveal(e ErrorProducer) Option {
-	return func(m *MockBuilder) error {
-		m.cfg.mutex.Lock()
-		defer m.cfg.mutex.Unlock()
-		m.cfg.errorOnPayloadReveal = e
-		return nil
+	return Option{
+		apply: func(m *MockBuilder) error {
+			m.cfg.mutex.Lock()
+			defer m.cfg.mutex.Unlock()
+			m.cfg.errorOnPayloadReveal = e
+			return nil
+		},
+		description: "WithErrorOnPayloadReveal",
 	}
 }
 
 func WithErrorOnPayloadRevealAtEpoch(epoch beacon.Epoch) Option {
-	return func(m *MockBuilder) error {
-		m.cfg.mutex.Lock()
-		defer m.cfg.mutex.Unlock()
+	return Option{
+		apply: func(m *MockBuilder) error {
+			m.cfg.mutex.Lock()
+			defer m.cfg.mutex.Unlock()
 
-		var spec = m.cfg.spec
-		if spec == nil {
-			return fmt.Errorf("unknown spec")
-		}
-		startSlot, err := spec.EpochStartSlot(epoch)
-		if err != nil {
-			return err
-		}
+			var spec = m.cfg.spec
+			if spec == nil {
+				return fmt.Errorf("unknown spec")
+			}
+			startSlot, err := spec.EpochStartSlot(epoch)
+			if err != nil {
+				return err
+			}
 
-		m.cfg.errorOnPayloadReveal = func(s beacon.Slot) error {
-			if s >= startSlot {
-				return fmt.Errorf("error generator")
+			m.cfg.errorOnPayloadReveal = func(s beacon.Slot) error {
+				if s >= startSlot {
+					return fmt.Errorf("error generator")
+				}
+				return nil
 			}
 			return nil
-		}
-		return nil
+		},
+		description: fmt.Sprintf("WithErrorOnPayloadRevealAtEpoch(%d)", epoch),
 	}
 }
 
 func WithErrorOnPayloadRevealAtSlot(slot beacon.Slot) Option {
-	return func(m *MockBuilder) error {
-		m.cfg.mutex.Lock()
-		defer m.cfg.mutex.Unlock()
+	return Option{
+		apply: func(m *MockBuilder) error {
+			m.cfg.mutex.Lock()
+			defer m.cfg.mutex.Unlock()
 
-		m.cfg.errorOnPayloadReveal = func(s beacon.Slot) error {
-			if s >= slot {
-				return fmt.Errorf("error generator")
+			m.cfg.errorOnPayloadReveal = func(s beacon.Slot) error {
+				if s >= slot {
+					return fmt.Errorf("error generator")
+				}
+				return nil
 			}
 			return nil
-		}
-		return nil
+		},
+		description: fmt.Sprintf("WithErrorOnPayloadRevealAtSlot(%d)", slot),
 	}
 }
 
@@ -325,21 +382,24 @@ func WithPayloadInvalidatorAtEpoch(
 	epoch beacon.Epoch,
 	invType PayloadInvalidation,
 ) Option {
-	return func(m *MockBuilder) error {
-		m.cfg.mutex.Lock()
-		defer m.cfg.mutex.Unlock()
+	return Option{
+		apply: func(m *MockBuilder) error {
+			m.cfg.mutex.Lock()
+			defer m.cfg.mutex.Unlock()
 
-		if m.cfg.spec == nil {
-			return fmt.Errorf("unknown spec")
-		}
-		startSlot, err := m.cfg.spec.EpochStartSlot(epoch)
-		if err != nil {
-			return err
-		}
+			if m.cfg.spec == nil {
+				return fmt.Errorf("unknown spec")
+			}
+			startSlot, err := m.cfg.spec.EpochStartSlot(epoch)
+			if err != nil {
+				return err
+			}
 
-		pm := genPayloadInvalidator(startSlot, invType)
-		m.cfg.payloadModifier = pm
-		return nil
+			pm := genPayloadInvalidator(startSlot, invType)
+			m.cfg.payloadModifier = pm
+			return nil
+		},
+		description: fmt.Sprintf("WithPayloadInvalidatorAtEpoch(%d)", epoch),
 	}
 }
 
@@ -347,13 +407,16 @@ func WithPayloadInvalidatorAtSlot(
 	slot beacon.Slot,
 	invType PayloadInvalidation,
 ) Option {
-	return func(m *MockBuilder) error {
-		m.cfg.mutex.Lock()
-		defer m.cfg.mutex.Unlock()
+	return Option{
+		apply: func(m *MockBuilder) error {
+			m.cfg.mutex.Lock()
+			defer m.cfg.mutex.Unlock()
 
-		pm := genPayloadInvalidator(slot, invType)
-		m.cfg.payloadModifier = pm
-		return nil
+			pm := genPayloadInvalidator(slot, invType)
+			m.cfg.payloadModifier = pm
+			return nil
+		},
+		description: fmt.Sprintf("WithPayloadInvalidatorAtSlot(%d)", slot),
 	}
 }
 
@@ -451,21 +514,24 @@ func WithPayloadAttributesInvalidatorAtEpoch(
 	epoch beacon.Epoch,
 	invType PayloadAttributesInvalidation,
 ) Option {
-	return func(m *MockBuilder) error {
-		m.cfg.mutex.Lock()
-		defer m.cfg.mutex.Unlock()
-		var spec = m.cfg.spec
-		if spec == nil {
-			return fmt.Errorf("unknown spec")
-		}
-		startSlot, err := spec.EpochStartSlot(epoch)
-		if err != nil {
-			return err
-		}
+	return Option{
+		apply: func(m *MockBuilder) error {
+			m.cfg.mutex.Lock()
+			defer m.cfg.mutex.Unlock()
+			var spec = m.cfg.spec
+			if spec == nil {
+				return fmt.Errorf("unknown spec")
+			}
+			startSlot, err := spec.EpochStartSlot(epoch)
+			if err != nil {
+				return err
+			}
 
-		pm := genPayloadAttributesInvalidator(startSlot, invType, spec)
-		m.cfg.payloadAttrModifier = pm
-		return nil
+			pm := genPayloadAttributesInvalidator(startSlot, invType, spec)
+			m.cfg.payloadAttrModifier = pm
+			return nil
+		},
+		description: fmt.Sprintf("WithPayloadInvalidatorAtEpoch(%d, %s)", epoch, invType),
 	}
 }
 
@@ -473,61 +539,70 @@ func WithPayloadAttributesInvalidatorAtSlot(
 	slot beacon.Slot,
 	invType PayloadAttributesInvalidation,
 ) Option {
-	return func(m *MockBuilder) error {
-		m.cfg.mutex.Lock()
-		defer m.cfg.mutex.Unlock()
-		if m.cfg.spec == nil {
-			return fmt.Errorf("unknown spec")
-		}
+	return Option{
+		apply: func(m *MockBuilder) error {
+			m.cfg.mutex.Lock()
+			defer m.cfg.mutex.Unlock()
+			if m.cfg.spec == nil {
+				return fmt.Errorf("unknown spec")
+			}
 
-		pm := genPayloadAttributesInvalidator(slot, invType, m.cfg.spec)
-		m.cfg.payloadAttrModifier = pm
-		return nil
+			pm := genPayloadAttributesInvalidator(slot, invType, m.cfg.spec)
+			m.cfg.payloadAttrModifier = pm
+			return nil
+		},
+		description: fmt.Sprintf("WithPayloadInvalidatorAtSlot(%d, %s)", slot, invType),
 	}
 }
 
 func WithInvalidBuilderBidVersionAtSlot(
 	activationSlot beacon.Slot,
 ) Option {
-	return func(m *MockBuilder) error {
-		m.cfg.mutex.Lock()
-		defer m.cfg.mutex.Unlock()
-		m.cfg.builderBidVersionResolver = func(slot beacon.Slot) (common.BuilderBid, string, error) {
-			if slot >= activationSlot {
-				// Always return Bellatrix, until theres a new fork that can override capella
-				return &bellatrix.BuilderBid{}, "bellatrix", nil
+	return Option{
+		apply: func(m *MockBuilder) error {
+			m.cfg.mutex.Lock()
+			defer m.cfg.mutex.Unlock()
+			m.cfg.builderBidVersionResolver = func(slot beacon.Slot) (common.BuilderBid, string, error) {
+				if slot >= activationSlot {
+					// Always return Bellatrix, until theres a new fork that can override capella
+					return &bellatrix.BuilderBid{}, "bellatrix", nil
+				}
+				return m.DefaultBuilderBidVersionResolver(slot)
 			}
-			return m.DefaultBuilderBidVersionResolver(slot)
-		}
 
-		return nil
+			return nil
+		},
+		description: fmt.Sprintf("WithInvalidBuilderBidVersionAtSlot(%d)", activationSlot),
 	}
 }
 
 func WithInvalidBuilderBidVersionAtEpoch(
 	activationEpoch beacon.Epoch,
 ) Option {
-	return func(m *MockBuilder) error {
-		m.cfg.mutex.Lock()
-		defer m.cfg.mutex.Unlock()
+	return Option{
+		apply: func(m *MockBuilder) error {
+			m.cfg.mutex.Lock()
+			defer m.cfg.mutex.Unlock()
 
-		var spec = m.cfg.spec
-		if spec == nil {
-			return fmt.Errorf("unknown spec")
-		}
-		activationSlot, err := spec.EpochStartSlot(activationEpoch)
-		if err != nil {
-			return err
-		}
-
-		m.cfg.builderBidVersionResolver = func(slot beacon.Slot) (common.BuilderBid, string, error) {
-			if slot >= activationSlot {
-				// Always return Bellatrix, until theres a new fork that can override capella
-				return &bellatrix.BuilderBid{}, "bellatrix", nil
+			var spec = m.cfg.spec
+			if spec == nil {
+				return fmt.Errorf("unknown spec")
 			}
-			return m.DefaultBuilderBidVersionResolver(slot)
-		}
+			activationSlot, err := spec.EpochStartSlot(activationEpoch)
+			if err != nil {
+				return err
+			}
 
-		return nil
+			m.cfg.builderBidVersionResolver = func(slot beacon.Slot) (common.BuilderBid, string, error) {
+				if slot >= activationSlot {
+					// Always return Bellatrix, until theres a new fork that can override capella
+					return &bellatrix.BuilderBid{}, "bellatrix", nil
+				}
+				return m.DefaultBuilderBidVersionResolver(slot)
+			}
+
+			return nil
+		},
+		description: fmt.Sprintf("WithInvalidBuilderBidVersionAtEpoch(%d)", activationEpoch),
 	}
 }
