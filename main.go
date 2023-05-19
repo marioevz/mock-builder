@@ -26,7 +26,7 @@ type Logger struct {
 }
 
 func (l *Logger) Logf(format string, values ...interface{}) {
-	l.Logger.Logf(0, format, values...)
+	l.Logger.Infof(format, values...)
 }
 
 func parseForkOrEpoch(
@@ -67,11 +67,12 @@ func parseInvParamString(
 	return epoch, invTypeStr, nil
 }
 
+var logger = &Logger{logrus.New()}
+
 func main() {
 	var (
 		el                       *exec_client.ExecutionClient
 		bn                       *beacon_client.BeaconClient
-		logger                   = &Logger{logrus.New()}
 		clEndpoint               string
 		elEndpoint               string
 		specPath                 string
