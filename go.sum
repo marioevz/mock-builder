@@ -201,6 +201,10 @@ github.com/labstack/gommon v0.3.0/go.mod h1:MULnywXg0yavhxWKc+lOruYdAhDwPK9wf0OL
 github.com/magiconair/properties v1.8.0/go.mod h1:PppfXfuXeibc/6YijjN8zIbojt8czPbwD3XqdrwzmxQ=
 github.com/marioevz/eth-clients v0.0.0-20230501225027-135b7d52b617 h1:sk4stg95D93cfiIIYI+XPRhXZQ91QGIPOHNDZjmpXms=
 github.com/marioevz/eth-clients v0.0.0-20230501225027-135b7d52b617/go.mod h1:LnzXFKyMw3wF/3eaTfPhKiwkWkZJXokOWcUI02Ioi4s=
+github.com/marioevz/eth-clients v0.0.0-20230503173323-98293c926363 h1:ONwsdY5/heIE0HHxh4+QXkwa69MZuaO+vONXduNBbrM=
+github.com/marioevz/eth-clients v0.0.0-20230503173323-98293c926363/go.mod h1:LnzXFKyMw3wF/3eaTfPhKiwkWkZJXokOWcUI02Ioi4s=
+github.com/marioevz/eth-clients v0.0.0-20230519160836-0e770d3e5659 h1:/N3xEgaeM7GvDtG1wDsypbMA1SOwbeby1gWH2qc7zTY=
+github.com/marioevz/eth-clients v0.0.0-20230519160836-0e770d3e5659/go.mod h1:LnzXFKyMw3wF/3eaTfPhKiwkWkZJXokOWcUI02Ioi4s=
 github.com/mattn/go-colorable v0.1.2/go.mod h1:U0ppj6V5qS13XJ6of8GYAs25YV2eR4EVcfRqFIhoBtE=
 github.com/mattn/go-colorable v0.1.8/go.mod h1:u6P/XSegPjTcexA+o6vUJrdnUu04hMope9wVRipJSqc=
 github.com/mattn/go-colorable v0.1.11/go.mod h1:u5H1YNBxpqRaxsYJYSkiCWKzEfiAb1Gb520KVy5xxl4=

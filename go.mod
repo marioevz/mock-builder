@@ -5,7 +5,7 @@ go 1.20
 require (
 	github.com/ethereum/go-ethereum v1.11.5
 	github.com/gorilla/mux v1.8.0
-	github.com/marioevz/eth-clients v0.0.0-20230501225027-135b7d52b617
+	github.com/marioevz/eth-clients v0.0.0-20230519160836-0e770d3e5659
 	github.com/protolambda/bls12-381-util v0.0.0-20220416220906-d8552aa452c7
 	github.com/protolambda/eth2api v0.0.0-20230316214135-5f8afbd6d05d
 	github.com/protolambda/zrnt v0.30.0

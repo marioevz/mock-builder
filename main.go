@@ -79,6 +79,7 @@ func main() {
 		invPayload               string
 		invPayloadAttr           string
 		extraDataWatermark       string
+		elRPCPort                int
 		clientInitTimeoutSeconds int
 		ttd                      int
 		port                     int
@@ -90,13 +91,13 @@ func main() {
 		&clEndpoint,
 		"cl",
 		"",
-		"REST API endpoint of the consensus client to use: <IP>:<PORT>",
+		"Consensus client Beacon API endpoint to use: <IP>:<BEACON_API_PORT>",
 	)
 	flag.StringVar(
 		&elEndpoint,
 		"el",
 		"",
-		"RPC endpoint of the execution client to use: <IP>:<PORT>",
+		"Execution Client Engine API endpoint to use: <IP>:<ENGINE_API_PORT>",
 	)
 	flag.StringVar(
 		&specPath,
@@ -109,6 +110,12 @@ func main() {
 		"jwt-secret",
 		"0x7365637265747365637265747365637265747365637265747365637265747365",
 		"jwt secret value as hexadecimal string, used to communicate to the execution client",
+	)
+	flag.IntVar(
+		&elRPCPort,
+		"el-rpc-port",
+		8545,
+		"Execution client RPC port",
 	)
 	flag.StringVar(
 		&invPayload,
@@ -181,8 +188,9 @@ func main() {
 		)
 	}
 
-	beaconCfg := beacon_client.BeaconClientConfig{
-		BeaconAPIPort: externalCl.Port,
+	beaconCfg := beacon_client.BeaconClientConfig{}
+	if clPort := externalCl.GetPort(); clPort != nil {
+		beaconCfg.BeaconAPIPort = int(*clPort)
 	}
 	bn = &beacon_client.BeaconClient{
 		Client: externalCl,
@@ -287,8 +295,11 @@ func main() {
 	executionCfg := exec_client.ExecutionClientConfig{
 		TerminalTotalDifficulty: int64(ttd),
 		JWTSecret:               jwtSecretBytes,
-		EngineAPIPort:           externalEl.GetPort(),
+		RPCPort:                 elRPCPort,
 	}
+	if extPort := externalEl.GetPort(); extPort != nil {
+		executionCfg.EngineAPIPort = int(*extPort)
+	} // else use default port (8551)
 	el = &exec_client.ExecutionClient{
 		Client: externalEl,
 		Logger: logger,
