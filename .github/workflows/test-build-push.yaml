@@ -26,6 +26,7 @@ jobs:
           args: --timeout 5m
   test:
     runs-on: ubuntu-latest
+    needs: lint
     steps:
       - uses: actions/checkout@8f4b7f84864484a7bf31766abe9204da3cbe65b3 # v3.5.0
       - name: Set up Go
@@ -34,3 +35,39 @@ jobs:
           go-version: "1.20.2"
       - name: Test
         run: go test -v -race ./...
+  build-push:
+    name: build-push
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@8f4b7f84864484a7bf31766abe9204da3cbe65b3 # v3.5.0
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ethpandaops/mock-builder
+          flavor: latest=true
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+      - name: Login to Docker Hub
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: docker-build-push
+        id: docker_build
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          file: Dockerfile
+          tags: ${{ steps.meta.outputs.tags }}
+          push: true
+      - name: Image digest
+        run: echo ${{ steps.docker_build.outputs.digest }}
