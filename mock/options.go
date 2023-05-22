@@ -501,7 +501,10 @@ func genPayloadAttributesInvalidator(
 				)
 				return true, nil
 			case INVALIDATE_ATTR_PREV_RANDAO, INVALIDATE_ATTR_RANDOM:
-				rand.Read(pa.Random[:])
+				_, err := rand.Read(pa.Random[:])
+				if err != nil {
+					panic(err)
+				}
 				return true, nil
 			}
 			panic(fmt.Errorf(
