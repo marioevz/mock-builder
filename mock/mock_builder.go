@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/rand"
 	"net"
 	"net/http"
@@ -122,11 +122,17 @@ func NewMockBuilder(
 	)
 
 	// builder key (not cryptographically secure)
-	rand.Seed(time.Now().UTC().UnixNano())
+	randomness := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
 	skByte := [32]byte{}
 	sk := blsu.SecretKey{}
-	rand.Read(skByte[:])
-	(&sk).Deserialize(&skByte)
+	_, err = randomness.Read(skByte[:])
+	if err != nil {
+		panic(fmt.Errorf("unable to generate random builder key %v", err))
+	}
+	err = (&sk).Deserialize(&skByte)
+	if err != nil {
+		panic(fmt.Errorf("unable to deserialize %v", err))
+	}
 	m.sk = &sk
 	if m.pk, err = blsu.SkToPk(m.sk); err != nil {
 		panic(err)
@@ -328,7 +334,7 @@ func (m *MockBuilder) HandleValidators(
 	w http.ResponseWriter,
 	req *http.Request,
 ) {
-	requestBytes, err := ioutil.ReadAll(req.Body)
+	requestBytes, err := io.ReadAll(req.Body)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{
 			"builder_id": m.cfg.id,
@@ -935,7 +941,7 @@ func (m *MockBuilder) HandleSubmitBlindedBlock(
 	}).Info(
 		"Received submission for blinded blocks",
 	)
-	requestBytes, err := ioutil.ReadAll(req.Body)
+	requestBytes, err := io.ReadAll(req.Body)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{
 			"builder_id": m.cfg.id,
@@ -1004,13 +1010,18 @@ func (m *MockBuilder) HandleSubmitBlindedBlock(
 	}
 
 	// Prepare response
-	executionPayloadResp.Data.FromExecutableData(p)
+	err = executionPayloadResp.Data.FromExecutableData(p)
+	if err != nil {
+		panic(err)
+	}
 
 	// Embed the execution payload in the block to obtain correct root
-	signedBeaconBlock.SetExecutionPayload(
+	err = signedBeaconBlock.SetExecutionPayload(
 		executionPayloadResp.Data,
 	)
-
+	if err != nil {
+		panic(err)
+	}
 	// Record the signed beacon block
 	signedBeaconBlockRoot := signedBeaconBlock.Root(m.cfg.spec)
 	m.signedBeaconBlockMutex.Lock()
@@ -1472,7 +1483,10 @@ func serveJSON(w http.ResponseWriter, value interface{}) error {
 	}
 	w.Header().Set("content-type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(resp)
+	_, err = w.Write(resp)
+	if err != nil {
+		panic(err)
+	}
 	return nil
 }
 

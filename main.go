@@ -167,7 +167,10 @@ func main() {
 		"multiply the bid wei value by this integer",
 	)
 
-	flag.CommandLine.Parse(os.Args[1:])
+	err := flag.CommandLine.Parse(os.Args[1:])
+	if err != nil {
+		panic(err)
+	}
 
 	if clEndpoint == "" {
 		fatalf("Missing required consensus client endpoint")
@@ -202,6 +205,7 @@ func main() {
 	if specPath != "" {
 		// TODO: Load spec config from yaml file
 		// fatalf("Missing beacon-spec config.yaml file")
+		fmt.Println("Yet to implement loading spec config from yaml file")
 	}
 
 	initctx, cancel := context.WithTimeout(
