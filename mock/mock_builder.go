@@ -126,7 +126,10 @@ func NewMockBuilder(
 	skByte := [32]byte{}
 	sk := blsu.SecretKey{}
 	rand.Read(skByte[:])
-	(&sk).Deserialize(&skByte)
+	err = (&sk).Deserialize(&skByte)
+	if err != nil {
+		panic(fmt.Errorf("unable to deserialize %v", err))
+	}
 	m.sk = &sk
 	if m.pk, err = blsu.SkToPk(m.sk); err != nil {
 		panic(err)
@@ -1004,13 +1007,18 @@ func (m *MockBuilder) HandleSubmitBlindedBlock(
 	}
 
 	// Prepare response
-	executionPayloadResp.Data.FromExecutableData(p)
+	err = executionPayloadResp.Data.FromExecutableData(p)
+	if err != nil {
+		panic(err)
+	}
 
 	// Embed the execution payload in the block to obtain correct root
-	signedBeaconBlock.SetExecutionPayload(
+	err = signedBeaconBlock.SetExecutionPayload(
 		executionPayloadResp.Data,
 	)
-
+	if err != nil {
+		panic(err)
+	}
 	// Record the signed beacon block
 	signedBeaconBlockRoot := signedBeaconBlock.Root(m.cfg.spec)
 	m.signedBeaconBlockMutex.Lock()
