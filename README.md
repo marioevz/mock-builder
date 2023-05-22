@@ -12,6 +12,17 @@ For the builder to function properly, the following parameters are necessary:
 - Execution client: Required to build the payloads
 - Beacon client: Required to fetch the state of the previous slot, and calculate, e.g., the prevrandao value
 
+## Installation
+
+To install mock-builder, you need to have Go installed on your machine. Once Go is installed, you can clone the repository and build the project.
+
+```bash
+
+git clone https://github.com/marioevz/mock-builder.git
+cd mock-builder
+go build .
+```
+
 ## Mock Payload Building
 The builder can inject modifications into the built payloads at predefined slots by using configurable callbacks:
 - Before sending the ForkchoiceUpdated directive to the execution client, by modifying the payload attributes, using `WithPayloadAttributesModifier` option
