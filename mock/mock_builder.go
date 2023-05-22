@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/rand"
 	"net"
 	"net/http"
@@ -334,7 +334,7 @@ func (m *MockBuilder) HandleValidators(
 	w http.ResponseWriter,
 	req *http.Request,
 ) {
-	requestBytes, err := ioutil.ReadAll(req.Body)
+	requestBytes, err := io.ReadAll(req.Body)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{
 			"builder_id": m.cfg.id,
@@ -941,7 +941,7 @@ func (m *MockBuilder) HandleSubmitBlindedBlock(
 	}).Info(
 		"Received submission for blinded blocks",
 	)
-	requestBytes, err := ioutil.ReadAll(req.Body)
+	requestBytes, err := io.ReadAll(req.Body)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{
 			"builder_id": m.cfg.id,

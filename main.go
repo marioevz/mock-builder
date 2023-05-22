@@ -205,6 +205,7 @@ func main() {
 	if specPath != "" {
 		// TODO: Load spec config from yaml file
 		// fatalf("Missing beacon-spec config.yaml file")
+		fmt.Println("Yet to implement loading spec config from yaml file")
 	}
 
 	initctx, cancel := context.WithTimeout(

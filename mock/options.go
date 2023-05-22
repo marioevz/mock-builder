@@ -1,9 +1,9 @@
 package mock_builder
 
 import (
+	"crypto/rand"
 	"fmt"
 	"math/big"
-	"math/rand"
 	"net"
 	"sync"
 
@@ -347,27 +347,30 @@ func genPayloadInvalidator(
 
 				switch invType {
 				case INVALIDATE_PAYLOAD_STATE_ROOT:
-					rand.Read(header.Root[:])
+					_, err = rand.Read(header.Root[:])
 					copy(ed.StateRoot[:], header.Root[:])
 				case INVALIDATE_PAYLOAD_PARENT_HASH:
-					rand.Read(header.ParentHash[:])
+					_, err = rand.Read(header.ParentHash[:])
 					copy(ed.ParentHash[:], header.ParentHash[:])
 				case INVALIDATE_PAYLOAD_COINBASE:
-					rand.Read(header.Coinbase[:])
+					_, err = rand.Read(header.Coinbase[:])
 					copy(ed.FeeRecipient[:], header.Coinbase[:])
 				case INVALIDATE_PAYLOAD_BASE_FEE:
 					header.BaseFee.Add(header.BaseFee, big.NewInt(1))
 					ed.BaseFeePerGas = header.BaseFee
 				case INVALIDATE_PAYLOAD_UNCLE_HASH:
-					rand.Read(header.UncleHash[:])
+					_, err = rand.Read(header.UncleHash[:])
 				case INVALIDATE_PAYLOAD_RECEIPT_HASH:
-					rand.Read(header.ReceiptHash[:])
+					_, err = rand.Read(header.ReceiptHash[:])
 					copy(ed.ReceiptsRoot[:], header.ReceiptHash[:])
 				default:
 					panic(fmt.Errorf(
 						"unknown invalidation type: %s",
 						invType,
 					))
+				}
+				if err != nil {
+					panic(err)
 				}
 				modifiedHash := header.Hash()
 				copy(ed.BlockHash[:], modifiedHash[:])
