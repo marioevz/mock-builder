@@ -122,10 +122,13 @@ func NewMockBuilder(
 	)
 
 	// builder key (not cryptographically secure)
-	rand.Seed(time.Now().UTC().UnixNano())
+	randomness := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
 	skByte := [32]byte{}
 	sk := blsu.SecretKey{}
-	rand.Read(skByte[:])
+	_, err = randomness.Read(skByte[:])
+	if err != nil {
+		panic(fmt.Errorf("unable to generate random builder key %v", err))
+	}
 	err = (&sk).Deserialize(&skByte)
 	if err != nil {
 		panic(fmt.Errorf("unable to deserialize %v", err))
@@ -1480,7 +1483,10 @@ func serveJSON(w http.ResponseWriter, value interface{}) error {
 	}
 	w.Header().Set("content-type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(resp)
+	_, err = w.Write(resp)
+	if err != nil {
+		panic(err)
+	}
 	return nil
 }
 
