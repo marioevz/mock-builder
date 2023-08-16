@@ -1,4 +1,4 @@
-package capella
+package deneb
 
 import (
 	"fmt"
@@ -8,13 +8,13 @@ import (
 	el_common "github.com/ethereum/go-ethereum/common"
 	"github.com/marioevz/mock-builder/types/common"
 	blsu "github.com/protolambda/bls12-381-util"
-	"github.com/protolambda/zrnt/eth2/beacon/capella"
 	beacon "github.com/protolambda/zrnt/eth2/beacon/common"
+	"github.com/protolambda/zrnt/eth2/beacon/deneb"
 	"github.com/protolambda/ztyp/tree"
 	"github.com/protolambda/ztyp/view"
 )
 
-type SignedBeaconBlock capella.SignedBeaconBlock
+type SignedBeaconBlock deneb.SignedBeaconBlock
 
 func (s *SignedBeaconBlock) ExecutionPayloadHash() el_common.Hash {
 	var hash el_common.Hash
@@ -45,7 +45,7 @@ func (s *SignedBeaconBlock) BlockSignature() *beacon.BLSSignature {
 func (s *SignedBeaconBlock) SetExecutionPayload(
 	ep common.ExecutionPayload,
 ) error {
-	if ep, ok := ep.(common.ExecutionPayloadCapella); ok {
+	if ep, ok := ep.(common.ExecutionPayloadDeneb); ok {
 		s.Message.Body.ExecutionPayload.ParentHash = ep.GetParentHash()
 		s.Message.Body.ExecutionPayload.FeeRecipient = ep.GetFeeRecipient()
 		s.Message.Body.ExecutionPayload.StateRoot = ep.GetStateRoot()
@@ -61,29 +61,39 @@ func (s *SignedBeaconBlock) SetExecutionPayload(
 		s.Message.Body.ExecutionPayload.BlockHash = ep.GetBlockHash()
 		s.Message.Body.ExecutionPayload.Transactions = ep.GetTransactions()
 		s.Message.Body.ExecutionPayload.Withdrawals = ep.GetWithdrawals()
+		s.Message.Body.ExecutionPayload.BlobGasUsed = ep.GetBlobGasUsed()
+		s.Message.Body.ExecutionPayload.ExcessBlobGas = ep.GetExcessBlobGas()
 		return nil
 	} else {
-		return fmt.Errorf("invalid payload for capella")
+		return fmt.Errorf("invalid payload for deneb")
 	}
 }
 
 type BuilderBid struct {
-	Header capella.ExecutionPayloadHeader `json:"header" yaml:"header"`
-	Value  view.Uint256View               `json:"value"  yaml:"value"`
-	PubKey beacon.BLSPubkey               `json:"pubkey" yaml:"pubkey"`
+	Header             deneb.ExecutionPayloadHeader `json:"header" yaml:"header"`
+	BlindedBlobsBundle deneb.BlindedBlobsBundle     `json:"blinded_blobs_bundle" yaml:"blinded_blobs_bundle"`
+	Value              view.Uint256View             `json:"value"  yaml:"value"`
+	PubKey             beacon.BLSPubkey             `json:"pubkey" yaml:"pubkey"`
 }
 
-func (b *BuilderBid) HashTreeRoot(hFn tree.HashFn) tree.Root {
+func (b *BuilderBid) HashTreeRoot(spec *beacon.Spec, hFn tree.HashFn) tree.Root {
 	return hFn.HashTreeRoot(
 		&b.Header,
+		spec.Wrap(&b.BlindedBlobsBundle),
 		&b.Value,
 		&b.PubKey,
 	)
 }
 
+type SignedBuilderBid struct {
+	Message   *BuilderBid         `json:"message" yaml:"message"`
+	Signature beacon.BLSSignature `json:"signature" yaml:"signature"`
+}
+
 func (b *BuilderBid) FromExecutableData(
 	spec *beacon.Spec,
 	ed *api.ExecutableData,
+	blobsBundle *api.BlobsBundleV1, // TODO: use this
 ) error {
 	if ed == nil {
 		return fmt.Errorf("nil execution payload")
@@ -142,20 +152,20 @@ func (b *BuilderBid) Sign(
 	domain beacon.BLSDomain,
 	sk *blsu.SecretKey,
 	pk *blsu.Pubkey,
-) (*common.SignedBuilderBid, error) {
+) (*SignedBuilderBid, error) {
 	pkBytes := pk.Serialize()
 	copy(b.PubKey[:], pkBytes[:])
 	sigRoot := beacon.ComputeSigningRoot(
-		b.HashTreeRoot(tree.GetHashFn()),
+		b.HashTreeRoot(spec, tree.GetHashFn()),
 		domain,
 	)
-	return &common.SignedBuilderBid{
+	return &SignedBuilderBid{
 		Message:   b,
 		Signature: beacon.BLSSignature(blsu.Sign(sk, sigRoot[:]).Serialize()),
 	}, nil
 }
 
-type ExecutionPayload capella.ExecutionPayload
+type ExecutionPayload deneb.ExecutionPayload
 
 func (p *ExecutionPayload) FromExecutableData(ed *api.ExecutableData) error {
 	if ed == nil {
@@ -255,4 +265,12 @@ func (p *ExecutionPayload) GetWithdrawals() beacon.Withdrawals {
 	return p.Withdrawals
 }
 
-var _ common.ExecutionPayloadCapella = (*ExecutionPayload)(nil)
+func (p *ExecutionPayload) GetBlobGasUsed() view.Uint64View {
+	return p.BlobGasUsed
+}
+
+func (p *ExecutionPayload) GetExcessBlobGas() view.Uint64View {
+	return p.ExcessBlobGas
+}
+
+var _ common.ExecutionPayloadDeneb = (*ExecutionPayload)(nil)

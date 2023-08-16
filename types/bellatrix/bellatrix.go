@@ -120,6 +120,7 @@ func (b *BuilderBid) SetPubKey(pk beacon.BLSPubkey) {
 }
 
 func (b *BuilderBid) Sign(
+	spec *beacon.Spec,
 	domain beacon.BLSDomain,
 	sk *blsu.SecretKey,
 	pk *blsu.Pubkey,
@@ -224,3 +225,5 @@ func (p *ExecutionPayload) GetBlockHash() beacon.Hash32 {
 func (p *ExecutionPayload) GetTransactions() beacon.PayloadTransactions {
 	return p.Transactions
 }
+
+var _ common.ExecutionPayload = (*ExecutionPayload)(nil)

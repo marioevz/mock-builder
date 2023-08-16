@@ -866,7 +866,7 @@ func (m *MockBuilder) HandleGetExecutionPayloadHeader(
 		"value":      bValue.String(),
 	}).Info("Built payload from EL")
 
-	signedBid, err := builderBid.Sign(m.builderApiDomain, m.sk, m.pk)
+	signedBid, err := builderBid.Sign(m.cfg.spec, m.builderApiDomain, m.sk, m.pk)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{
 			"builder_id": m.cfg.id,

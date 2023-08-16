@@ -37,7 +37,7 @@ type BuilderBid interface {
 	FromExecutableData(*beacon.Spec, *api.ExecutableData) error
 	SetValue(*big.Int)
 	SetPubKey(beacon.BLSPubkey)
-	Sign(domain beacon.BLSDomain,
+	Sign(spec *beacon.Spec, domain beacon.BLSDomain,
 		sk *blsu.SecretKey,
 		pk *blsu.Pubkey) (*SignedBuilderBid, error)
 }
@@ -89,9 +89,15 @@ type ExecutionPayload interface {
 	GetTransactions() beacon.PayloadTransactions
 }
 
-type ExecutionPayloadWithdrawals interface {
+type ExecutionPayloadCapella interface {
 	ExecutionPayload
 	GetWithdrawals() beacon.Withdrawals
+}
+
+type ExecutionPayloadDeneb interface {
+	ExecutionPayloadCapella
+	GetBlobGasUsed() view.Uint64View
+	GetExcessBlobGas() view.Uint64View
 }
 
 type ExecutionPayloadResponse struct {
