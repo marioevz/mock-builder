@@ -45,9 +45,9 @@ func (s *SignedBeaconBlock) BlockSignature() *beacon.BLSSignature {
 func (s *SignedBeaconBlock) Reveal(
 	ep common.ExecutionPayload,
 	bb common.BlobsBundle,
-) error {
+) (*common.UnblindedResponse, error) {
 	if bb != nil {
-		return fmt.Errorf("execution data contains blobs")
+		return nil, fmt.Errorf("execution data contains blobs")
 	}
 	s.Message.Body.ExecutionPayload.ParentHash = ep.GetParentHash()
 	s.Message.Body.ExecutionPayload.FeeRecipient = ep.GetFeeRecipient()
@@ -63,7 +63,10 @@ func (s *SignedBeaconBlock) Reveal(
 	s.Message.Body.ExecutionPayload.BaseFeePerGas = ep.GetBaseFeePerGas()
 	s.Message.Body.ExecutionPayload.BlockHash = ep.GetBlockHash()
 	s.Message.Body.ExecutionPayload.Transactions = ep.GetTransactions()
-	return nil
+	return &common.UnblindedResponse{
+		Version: "bellatrix",
+		Data:    s.Message.Body.ExecutionPayload,
+	}, nil
 }
 
 func (sbb *SignedBeaconBlock) Validate(pk *blsu.Pubkey, spec *beacon.Spec, genesisValidatorsRoot *tree.Root) error {

@@ -55,10 +55,10 @@ type MockBuilder struct {
 	// Payload/Blocks history maps
 	suggestedFeeRecipients          map[beacon.BLSPubkey]el_common.Address
 	suggestedFeeRecipientsMutex     sync.Mutex
-	builtPayloads                   map[beacon.Slot]*api.ExecutableData
+	builtPayloads                   map[beacon.Slot]common.ExecutionPayload
 	builtBlobBundles                map[beacon.Slot]common.BlobsBundle
 	builtPayloadsMutex              sync.Mutex
-	modifiedPayloads                map[beacon.Slot]*api.ExecutableData
+	modifiedPayloads                map[beacon.Slot]common.ExecutionPayload
 	modifiedPayloadsMutex           sync.Mutex
 	validatorPublicKeys             map[beacon.Slot]*beacon.BLSPubkey
 	validatorPublicKeysMutex        sync.Mutex
@@ -96,9 +96,9 @@ func NewMockBuilder(
 		suggestedFeeRecipients: make(
 			map[beacon.BLSPubkey]el_common.Address,
 		),
-		builtPayloads:       make(map[beacon.Slot]*api.ExecutableData),
+		builtPayloads:       make(map[beacon.Slot]common.ExecutionPayload),
 		builtBlobBundles:    make(map[beacon.Slot]common.BlobsBundle),
-		modifiedPayloads:    make(map[beacon.Slot]*api.ExecutableData),
+		modifiedPayloads:    make(map[beacon.Slot]common.ExecutionPayload),
 		validatorPublicKeys: make(map[beacon.Slot]*beacon.BLSPubkey),
 		receivedSignedBeaconBlocks: make(
 			map[beacon.Slot]common.SignedBeaconResponse,
@@ -321,16 +321,16 @@ func (m *MockBuilder) GetSignedBeaconBlockCount() int {
 	return len(m.signedBeaconBlock)
 }
 
-func (m *MockBuilder) GetBuiltPayloads() map[beacon.Slot]*api.ExecutableData {
-	mapCopy := make(map[beacon.Slot]*api.ExecutableData)
+func (m *MockBuilder) GetBuiltPayloads() map[beacon.Slot]common.ExecutionPayload {
+	mapCopy := make(map[beacon.Slot]common.ExecutionPayload)
 	for k, v := range m.builtPayloads {
 		mapCopy[k] = v
 	}
 	return mapCopy
 }
 
-func (m *MockBuilder) GetModifiedPayloads() map[beacon.Slot]*api.ExecutableData {
-	mapCopy := make(map[beacon.Slot]*api.ExecutableData)
+func (m *MockBuilder) GetModifiedPayloads() map[beacon.Slot]common.ExecutionPayload {
+	mapCopy := make(map[beacon.Slot]common.ExecutionPayload)
 	for k, v := range m.modifiedPayloads {
 		mapCopy[k] = v
 	}
@@ -646,10 +646,26 @@ func (m *MockBuilder) HandleGetExecutionPayloadHeader(
 
 	// Engine API Directive Versions
 	var (
+		executionPayload         common.ExecutionPayload
 		getPayloadVersion        int  = 1
 		forkchoiceUpdatedVersion int  = 1
 		blobCommitmentVersion    byte = 1
 	)
+
+	// Determind Execution Payload Version
+	if m.cfg.spec.SlotToEpoch(slot) >= m.cfg.spec.DENEB_FORK_EPOCH {
+		executionPayload = &deneb.ExecutionPayload{}
+		getPayloadVersion = 3
+		forkchoiceUpdatedVersion = 3
+	} else if m.cfg.spec.SlotToEpoch(slot) >= m.cfg.spec.CAPELLA_FORK_EPOCH {
+		executionPayload = &capella.ExecutionPayload{}
+		getPayloadVersion = 2
+		forkchoiceUpdatedVersion = 2
+	} else if m.cfg.spec.SlotToEpoch(slot) >= m.cfg.spec.BELLATRIX_FORK_EPOCH {
+		executionPayload = &bellatrix.ExecutionPayload{}
+		getPayloadVersion = 1
+		forkchoiceUpdatedVersion = 1
+	}
 
 	// Build payload attributes
 
@@ -689,8 +705,6 @@ func (m *MockBuilder) HandleGetExecutionPayloadHeader(
 			newWithdrawal.Validator = uint64(w.ValidatorIndex)
 			withdrawals[i] = &newWithdrawal
 		}
-		getPayloadVersion = 2
-		forkchoiceUpdatedVersion = 2
 	}
 	// Beacon Root for Deneb
 	var beaconRoot *el_common.Hash
@@ -698,9 +712,6 @@ func (m *MockBuilder) HandleGetExecutionPayloadHeader(
 		h := state.LatestBlockHeader()
 		beaconRoot = new(el_common.Hash)
 		copy(beaconRoot[:], h.BodyRoot[:])
-
-		getPayloadVersion = 3
-		forkchoiceUpdatedVersion = 3
 	}
 
 	pAttr := api.PayloadAttributes{
@@ -974,14 +985,17 @@ func (m *MockBuilder) HandleGetExecutionPayloadHeader(
 		return
 	}
 
+	// Build Execution Payload for response
+	executionPayload.FromExecutableData(p)
+
 	// Finally add the execution payload to the cache
 	m.builtPayloadsMutex.Lock()
-	m.builtPayloads[slot] = p
+	m.builtPayloads[slot] = executionPayload
 	m.builtBlobBundles[slot] = blobsBundle
 	m.builtPayloadsMutex.Unlock()
 	if payloadModified {
 		m.modifiedPayloadsMutex.Lock()
-		m.modifiedPayloads[slot] = p
+		m.modifiedPayloads[slot] = executionPayload
 		m.modifiedPayloadsMutex.Unlock()
 	}
 }
@@ -1025,18 +1039,17 @@ func (m *MockBuilder) HandleSubmitBlindedBlock(
 
 	var (
 		signedBeaconResponse common.SignedBeaconResponse
-		executionPayloadResp common.ExecutionPayloadResponse
 	)
 	if m.cfg.spec.SlotToEpoch(
 		messageSlotEnvelope.SlotEnvelope.Slot,
+	) >= m.cfg.spec.DENEB_FORK_EPOCH {
+		signedBeaconResponse = &deneb.SignedBlindedBlockContents{}
+	} else if m.cfg.spec.SlotToEpoch(
+		messageSlotEnvelope.SlotEnvelope.Slot,
 	) >= m.cfg.spec.CAPELLA_FORK_EPOCH {
 		signedBeaconResponse = &capella.SignedBeaconBlock{}
-		executionPayloadResp.Version = "capella"
-		executionPayloadResp.Data = &capella.ExecutionPayload{}
 	} else if m.cfg.spec.SlotToEpoch(messageSlotEnvelope.SlotEnvelope.Slot) >= m.cfg.spec.BELLATRIX_FORK_EPOCH {
 		signedBeaconResponse = &bellatrix.SignedBeaconBlock{}
-		executionPayloadResp.Version = "bellatrix"
-		executionPayloadResp.Data = &bellatrix.ExecutionPayload{}
 	} else {
 		logrus.WithFields(logrus.Fields{
 			"builder_id": m.cfg.id,
@@ -1083,15 +1096,9 @@ func (m *MockBuilder) HandleSubmitBlindedBlock(
 		}
 	}
 
-	// Prepare response
-	err = executionPayloadResp.Data.FromExecutableData(p)
-	if err != nil {
-		panic(err)
-	}
-
 	// Embed the execution payload in the block to obtain correct root
-	err = signedBeaconResponse.Reveal(
-		executionPayloadResp.Data,
+	unblindedResponse, err := signedBeaconResponse.Reveal(
+		p,
 		blobsBundle,
 	)
 	if err != nil {
@@ -1159,7 +1166,7 @@ func (m *MockBuilder) HandleSubmitBlindedBlock(
 
 	logrus.WithFields(logrus.Fields{
 		"builder_id": m.cfg.id,
-		"payload":    p.BlockHash.String(),
+		"payload":    p.GetBlockHash().String(),
 	}).Info("Built payload sent to CL")
 
 	// Check if we are supposed to simulate an error
@@ -1182,7 +1189,7 @@ func (m *MockBuilder) HandleSubmitBlindedBlock(
 		}
 	}
 
-	if err := serveJSON(w, executionPayloadResp); err != nil {
+	if err := serveJSON(w, unblindedResponse); err != nil {
 		logrus.WithFields(logrus.Fields{
 			"builder_id": m.cfg.id,
 			"err":        err,

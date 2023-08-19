@@ -212,8 +212,8 @@ github.com/lightclient/go-ethereum v1.10.10-0.20230814210040-946a2dae2e9e/go.mod
 github.com/magiconair/properties v1.8.0/go.mod h1:PppfXfuXeibc/6YijjN8zIbojt8czPbwD3XqdrwzmxQ=
 github.com/marioevz/eth-clients v0.0.0-20230818234623-36f8c9e967a5 h1:N3anqYV1zf/ZIKQSoVplmhpucNiT+qlMnKVyYow3GTs=
 github.com/marioevz/eth-clients v0.0.0-20230818234623-36f8c9e967a5/go.mod h1:rMpf0ACcTvSNriHRDIICRTm/HamBDdb0wd/JtjebXJ0=
-github.com/marioevz/zrnt v0.26.2-0.20230819020431-ab6f776766ce h1:TJtHOhKLjdScPoaIalXvH3rdDrVZz5t9l1FBfSGL9x0=
-github.com/marioevz/zrnt v0.26.2-0.20230819020431-ab6f776766ce/go.mod h1:qcdX9CXFeVNCQK/q0nswpzhd+31RHMk2Ax/2lMsJ4Jw=
+github.com/marioevz/zrnt v0.26.2-0.20230819193936-3614718a4dde h1:tOfbiXFY1FvRHZCJeyAIgkcuyiEckVpKmFj+ypEFEXU=
+github.com/marioevz/zrnt v0.26.2-0.20230819193936-3614718a4dde/go.mod h1:qcdX9CXFeVNCQK/q0nswpzhd+31RHMk2Ax/2lMsJ4Jw=
 github.com/mattn/go-colorable v0.1.2/go.mod h1:U0ppj6V5qS13XJ6of8GYAs25YV2eR4EVcfRqFIhoBtE=
 github.com/mattn/go-colorable v0.1.8/go.mod h1:u6P/XSegPjTcexA+o6vUJrdnUu04hMope9wVRipJSqc=
 github.com/mattn/go-colorable v0.1.11/go.mod h1:u5H1YNBxpqRaxsYJYSkiCWKzEfiAb1Gb520KVy5xxl4=

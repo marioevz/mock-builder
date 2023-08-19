@@ -16,67 +16,94 @@ import (
 
 type SignedBeaconBlock deneb.SignedBeaconBlock
 
-func (s *SignedBeaconBlock) ExecutionPayloadHash() el_common.Hash {
+type SignedBlindedBlockContents struct {
+	SignedBeaconBlock        `json:"signed_beacon_block" yaml:"signed_beacon_block"`
+	SignedBlindedBlobSidecar []deneb.SignedBlindedBlobSidecar `json:"signed_blinded_blob_sidecars" yaml:"signed_blinded_blob_sidecars"`
+}
+
+func (s *SignedBlindedBlockContents) ExecutionPayloadHash() el_common.Hash {
 	var hash el_common.Hash
 	copy(hash[:], s.Message.Body.ExecutionPayload.BlockHash[:])
 	return hash
 }
 
-func (s *SignedBeaconBlock) Root(spec *beacon.Spec) tree.Root {
+func (s *SignedBlindedBlockContents) Root(spec *beacon.Spec) tree.Root {
 	return s.Message.HashTreeRoot(spec, tree.GetHashFn())
 }
 
-func (s *SignedBeaconBlock) StateRoot() tree.Root {
+func (s *SignedBlindedBlockContents) StateRoot() tree.Root {
 	return s.Message.StateRoot
 }
 
-func (s *SignedBeaconBlock) Slot() beacon.Slot {
+func (s *SignedBlindedBlockContents) Slot() beacon.Slot {
 	return s.Message.Slot
 }
 
-func (s *SignedBeaconBlock) ProposerIndex() beacon.ValidatorIndex {
+func (s *SignedBlindedBlockContents) ProposerIndex() beacon.ValidatorIndex {
 	return s.Message.ProposerIndex
 }
 
-func (s *SignedBeaconBlock) BlockSignature() *beacon.BLSSignature {
+func (s *SignedBlindedBlockContents) BlockSignature() *beacon.BLSSignature {
 	return &s.Signature
 }
 
-func (s *SignedBeaconBlock) Reveal(
-	ep common.ExecutionPayload,
-	bb common.BlobsBundle,
-) error {
-	if ep, ok := ep.(common.ExecutionPayloadDeneb); ok {
-		s.Message.Body.ExecutionPayload.ParentHash = ep.GetParentHash()
-		s.Message.Body.ExecutionPayload.FeeRecipient = ep.GetFeeRecipient()
-		s.Message.Body.ExecutionPayload.StateRoot = ep.GetStateRoot()
-		s.Message.Body.ExecutionPayload.ReceiptsRoot = ep.GetReceiptsRoot()
-		s.Message.Body.ExecutionPayload.LogsBloom = ep.GetLogsBloom()
-		s.Message.Body.ExecutionPayload.PrevRandao = ep.GetPrevRandao()
-		s.Message.Body.ExecutionPayload.BlockNumber = ep.GetBlockNumber()
-		s.Message.Body.ExecutionPayload.GasLimit = ep.GetGasLimit()
-		s.Message.Body.ExecutionPayload.GasUsed = ep.GetGasUsed()
-		s.Message.Body.ExecutionPayload.Timestamp = ep.GetTimestamp()
-		s.Message.Body.ExecutionPayload.ExtraData = ep.GetExtraData()
-		s.Message.Body.ExecutionPayload.BaseFeePerGas = ep.GetBaseFeePerGas()
-		s.Message.Body.ExecutionPayload.BlockHash = ep.GetBlockHash()
-		s.Message.Body.ExecutionPayload.Transactions = ep.GetTransactions()
-		s.Message.Body.ExecutionPayload.Withdrawals = ep.GetWithdrawals()
-		s.Message.Body.ExecutionPayload.BlobGasUsed = ep.GetBlobGasUsed()
-		s.Message.Body.ExecutionPayload.ExcessBlobGas = ep.GetExcessBlobGas()
-		s.Message.Body.BlobKZGCommitments = *bb.GetCommitments()
-
-		// TODO: Signed side-cars
-		return nil
-	} else {
-		return fmt.Errorf("invalid payload for deneb")
-	}
+type UnblindedResponseData struct {
+	ExecutionPayload *deneb.ExecutionPayload `json:"execution_payload" yaml:"execution_payload"`
+	BlobsBundle      *deneb.BlobsBundle      `json:"blobs_bundle" yaml:"blobs_bundle"`
 }
 
-func (sbb *SignedBeaconBlock) Validate(pk *blsu.Pubkey, spec *beacon.Spec, genesisValidatorsRoot *tree.Root) error {
+func (s *SignedBlindedBlockContents) Reveal(
+	ep common.ExecutionPayload,
+	bb common.BlobsBundle,
+) (*common.UnblindedResponse, error) {
+	denebPayload, ok := ep.(common.ExecutionPayloadDeneb)
+	if !ok {
+		return nil, fmt.Errorf("invalid payload for deneb")
+	}
+
+	s.Message.Body.ExecutionPayload.ParentHash = ep.GetParentHash()
+	s.Message.Body.ExecutionPayload.FeeRecipient = ep.GetFeeRecipient()
+	s.Message.Body.ExecutionPayload.StateRoot = ep.GetStateRoot()
+	s.Message.Body.ExecutionPayload.ReceiptsRoot = ep.GetReceiptsRoot()
+	s.Message.Body.ExecutionPayload.LogsBloom = ep.GetLogsBloom()
+	s.Message.Body.ExecutionPayload.PrevRandao = ep.GetPrevRandao()
+	s.Message.Body.ExecutionPayload.BlockNumber = ep.GetBlockNumber()
+	s.Message.Body.ExecutionPayload.GasLimit = ep.GetGasLimit()
+	s.Message.Body.ExecutionPayload.GasUsed = ep.GetGasUsed()
+	s.Message.Body.ExecutionPayload.Timestamp = ep.GetTimestamp()
+	s.Message.Body.ExecutionPayload.ExtraData = ep.GetExtraData()
+	s.Message.Body.ExecutionPayload.BaseFeePerGas = ep.GetBaseFeePerGas()
+	s.Message.Body.ExecutionPayload.BlockHash = ep.GetBlockHash()
+	s.Message.Body.ExecutionPayload.Transactions = ep.GetTransactions()
+	s.Message.Body.ExecutionPayload.Withdrawals = denebPayload.GetWithdrawals()
+	s.Message.Body.ExecutionPayload.BlobGasUsed = denebPayload.GetBlobGasUsed()
+	s.Message.Body.ExecutionPayload.ExcessBlobGas = denebPayload.GetExcessBlobGas()
+
+	// TODO: Signed side-cars
+
+	var (
+		commitments = bb.GetCommitments()
+		proofs      = bb.GetProofs()
+		blobs       = bb.GetBlobs()
+	)
+	return &common.UnblindedResponse{
+		Version: "deneb",
+		Data: &UnblindedResponseData{
+			ExecutionPayload: &s.Message.Body.ExecutionPayload,
+			BlobsBundle: &deneb.BlobsBundle{
+				KZGCommitments: *commitments,
+				KZGProofs:      *proofs,
+				Blobs:          *blobs,
+			},
+		},
+	}, nil
+}
+
+func (sbb *SignedBlindedBlockContents) Validate(pk *blsu.Pubkey, spec *beacon.Spec, genesisValidatorsRoot *tree.Root) error {
 	// TODO: This is incorrect because the response also contains the signed blob sidecars
 	//  and we need to validate those as well.
 	// TODO: Validate the beacon root matches the execution payload that we originally sent too
+	// TODO: Validate kzg_commitments match the ones we originally sent too
 	root := sbb.Root(spec)
 	sig := sbb.BlockSignature()
 	s, err := sig.Signature()
@@ -92,15 +119,6 @@ func (sbb *SignedBeaconBlock) Validate(pk *blsu.Pubkey, spec *beacon.Spec, genes
 
 	return nil
 }
-
-type BuilderBid struct {
-	Header             *deneb.ExecutionPayloadHeader `json:"header" yaml:"header"`
-	BlindedBlobsBundle *deneb.BlindedBlobsBundle     `json:"blinded_blobs_bundle" yaml:"blinded_blobs_bundle"`
-	Value              view.Uint256View              `json:"value"  yaml:"value"`
-	PubKey             beacon.BLSPubkey              `json:"pubkey" yaml:"pubkey"`
-}
-
-var _ common.BuilderBid = (*BuilderBid)(nil)
 
 type BlobsBundle struct {
 	deneb.BlobsBundle
@@ -127,6 +145,15 @@ func (bb *BlobsBundle) FromAPI(blobsBundle *api.BlobsBundleV1) error {
 func (bb *BlobsBundle) Blinded(spec *beacon.Spec, hFn tree.HashFn) common.BlindedBlobsBundle {
 	return bb.BlobsBundle.Blinded(spec, hFn)
 }
+
+type BuilderBid struct {
+	Header             *deneb.ExecutionPayloadHeader `json:"header" yaml:"header"`
+	BlindedBlobsBundle *deneb.BlindedBlobsBundle     `json:"blinded_blobs_bundle" yaml:"blinded_blobs_bundle"`
+	Value              view.Uint256View              `json:"value"  yaml:"value"`
+	PubKey             beacon.BLSPubkey              `json:"pubkey" yaml:"pubkey"`
+}
+
+var _ common.BuilderBid = (*BuilderBid)(nil)
 
 func (b *BuilderBid) HashTreeRoot(spec *beacon.Spec, hFn tree.HashFn) tree.Root {
 	return hFn.HashTreeRoot(

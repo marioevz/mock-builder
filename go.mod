@@ -79,6 +79,6 @@ require (
 	rsc.io/tmplfunc v0.0.3 // indirect
 )
 
-replace github.com/protolambda/zrnt => github.com/marioevz/zrnt v0.26.2-0.20230819020431-ab6f776766ce
+replace github.com/protolambda/zrnt => github.com/marioevz/zrnt v0.26.2-0.20230819193936-3614718a4dde
 
 replace github.com/ethereum/go-ethereum => github.com/lightclient/go-ethereum v1.10.10-0.20230814210040-946a2dae2e9e

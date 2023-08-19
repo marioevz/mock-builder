@@ -45,9 +45,9 @@ func (s *SignedBeaconBlock) BlockSignature() *beacon.BLSSignature {
 func (s *SignedBeaconBlock) Reveal(
 	ep common.ExecutionPayload,
 	bb common.BlobsBundle,
-) error {
+) (*common.UnblindedResponse, error) {
 	if bb != nil {
-		return fmt.Errorf("execution data contains blobs")
+		return nil, fmt.Errorf("execution data contains blobs")
 	}
 	if ep, ok := ep.(common.ExecutionPayloadCapella); ok {
 		s.Message.Body.ExecutionPayload.ParentHash = ep.GetParentHash()
@@ -65,9 +65,14 @@ func (s *SignedBeaconBlock) Reveal(
 		s.Message.Body.ExecutionPayload.BlockHash = ep.GetBlockHash()
 		s.Message.Body.ExecutionPayload.Transactions = ep.GetTransactions()
 		s.Message.Body.ExecutionPayload.Withdrawals = ep.GetWithdrawals()
-		return nil
+
+		return &common.UnblindedResponse{
+			Version: "capella",
+			Data:    s.Message.Body.ExecutionPayload,
+		}, nil
+
 	} else {
-		return fmt.Errorf("invalid payload for capella")
+		return nil, fmt.Errorf("invalid payload for capella")
 	}
 }
 

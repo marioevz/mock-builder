@@ -66,7 +66,7 @@ type SignedBeaconResponse interface {
 	ExecutionPayloadHash() el_common.Hash
 	Root(*beacon.Spec) tree.Root
 	StateRoot() tree.Root
-	Reveal(ExecutionPayload, BlobsBundle) error
+	Reveal(ExecutionPayload, BlobsBundle) (*UnblindedResponse, error)
 	Slot() beacon.Slot
 	ProposerIndex() beacon.ValidatorIndex
 	BlockSignature() *common.BLSSignature
@@ -116,7 +116,7 @@ type ExecutionPayloadDeneb interface {
 	GetExcessBlobGas() view.Uint64View
 }
 
-type ExecutionPayloadResponse struct {
-	Version string           `json:"version" yaml:"version"`
-	Data    ExecutionPayload `json:"data"    yaml:"data"`
+type UnblindedResponse struct {
+	Version string      `json:"version" yaml:"version"`
+	Data    interface{} `json:"data"    yaml:"data"`
 }
