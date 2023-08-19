@@ -8,6 +8,7 @@ import (
 	blsu "github.com/protolambda/bls12-381-util"
 	"github.com/protolambda/zrnt/eth2/beacon/common"
 	beacon "github.com/protolambda/zrnt/eth2/beacon/common"
+	"github.com/protolambda/zrnt/eth2/beacon/deneb"
 	"github.com/protolambda/ztyp/tree"
 	"github.com/protolambda/ztyp/view"
 )
@@ -34,7 +35,7 @@ type SignedValidatorRegistrationV1 struct {
 }
 
 type BuilderBid interface {
-	FromExecutableData(*beacon.Spec, *api.ExecutableData) error
+	Build(*beacon.Spec, *api.ExecutableData, BlobsBundle) error
 	SetValue(*big.Int)
 	SetPubKey(beacon.BLSPubkey)
 	Sign(spec *beacon.Spec, domain beacon.BLSDomain,
@@ -61,14 +62,29 @@ type VersionedSignedBuilderBid struct {
 	Data    *SignedBuilderBid `json:"data"    yaml:"data"`
 }
 
-type SignedBeaconBlock interface {
+type SignedBeaconResponse interface {
 	ExecutionPayloadHash() el_common.Hash
 	Root(*beacon.Spec) tree.Root
 	StateRoot() tree.Root
-	SetExecutionPayload(ExecutionPayload) error
+	Reveal(ExecutionPayload, BlobsBundle) error
 	Slot() beacon.Slot
 	ProposerIndex() beacon.ValidatorIndex
 	BlockSignature() *common.BLSSignature
+	Validate(publicKey *blsu.Pubkey, spec *beacon.Spec, genesisValidatorsRoot *tree.Root) error
+}
+
+type BlindedBlobsBundle interface {
+	GetCommitments() *beacon.KZGCommitments
+	GetProofs() *beacon.KZGProofs
+	GetBlobRoots() *deneb.BlobRoots
+}
+
+type BlobsBundle interface {
+	FromAPI(*api.BlobsBundleV1) error
+	GetCommitments() *beacon.KZGCommitments
+	GetProofs() *beacon.KZGProofs
+	GetBlobs() *deneb.Blobs
+	Blinded(spec *beacon.Spec, hFn tree.HashFn) BlindedBlobsBundle
 }
 
 type ExecutionPayload interface {

@@ -85,6 +85,7 @@ func main() {
 		ttd                      int
 		port                     int
 		bidmult                  int
+		getPayloadMsDelay        int
 		options                  = make([]mock_builder.Option, 0)
 	)
 
@@ -166,6 +167,12 @@ func main() {
 		0,
 		"multiply the bid wei value by this integer",
 	)
+	flag.IntVar(
+		&getPayloadMsDelay,
+		"get-payload-delay-ms",
+		200,
+		"Delay in milliseconds to wait before requesting a payload from the execution client",
+	)
 
 	err := flag.CommandLine.Parse(os.Args[1:])
 	if err != nil {
@@ -243,6 +250,14 @@ func main() {
 		options = append(
 			options,
 			mock_builder.WithExtraDataWatermark(extraDataWatermark),
+		)
+	}
+	if getPayloadMsDelay > 0 {
+		options = append(
+			options,
+			mock_builder.WithGetPayloadDelay(
+				time.Millisecond*time.Duration(getPayloadMsDelay),
+			),
 		)
 	}
 

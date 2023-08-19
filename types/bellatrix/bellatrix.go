@@ -42,9 +42,13 @@ func (s *SignedBeaconBlock) BlockSignature() *beacon.BLSSignature {
 	return &s.Signature
 }
 
-func (s *SignedBeaconBlock) SetExecutionPayload(
+func (s *SignedBeaconBlock) Reveal(
 	ep common.ExecutionPayload,
+	bb common.BlobsBundle,
 ) error {
+	if bb != nil {
+		return fmt.Errorf("execution data contains blobs")
+	}
 	s.Message.Body.ExecutionPayload.ParentHash = ep.GetParentHash()
 	s.Message.Body.ExecutionPayload.FeeRecipient = ep.GetFeeRecipient()
 	s.Message.Body.ExecutionPayload.StateRoot = ep.GetStateRoot()
@@ -62,6 +66,23 @@ func (s *SignedBeaconBlock) SetExecutionPayload(
 	return nil
 }
 
+func (sbb *SignedBeaconBlock) Validate(pk *blsu.Pubkey, spec *beacon.Spec, genesisValidatorsRoot *tree.Root) error {
+	root := sbb.Root(spec)
+	sig := sbb.BlockSignature()
+	s, err := sig.Signature()
+	if err != nil {
+		return fmt.Errorf("unable to validate signature: %v", err)
+	}
+
+	dom := beacon.ComputeDomain(beacon.DOMAIN_BEACON_PROPOSER, spec.ForkVersion(sbb.Slot()), *genesisValidatorsRoot)
+	signingRoot := beacon.ComputeSigningRoot(root, dom)
+	if !blsu.Verify(pk, signingRoot[:], s) {
+		return fmt.Errorf("invalid signature")
+	}
+
+	return nil
+}
+
 type BuilderBid struct {
 	Header bellatrix.ExecutionPayloadHeader `json:"header" yaml:"header"`
 	Value  view.Uint256View                 `json:"value"  yaml:"value"`
@@ -76,9 +97,10 @@ func (b *BuilderBid) HashTreeRoot(hFn tree.HashFn) tree.Root {
 	)
 }
 
-func (b *BuilderBid) FromExecutableData(
+func (b *BuilderBid) Build(
 	spec *beacon.Spec,
 	ed *api.ExecutableData,
+	_ common.BlobsBundle,
 ) error {
 	if ed == nil {
 		return fmt.Errorf("nil execution payload")

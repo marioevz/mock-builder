@@ -6,19 +6,22 @@ import (
 	"math/big"
 	"net"
 	"sync"
+	"time"
 
 	api "github.com/ethereum/go-ethereum/beacon/engine"
+	el_common "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/marioevz/mock-builder/types/bellatrix"
+	"github.com/marioevz/mock-builder/types/capella"
 	"github.com/marioevz/mock-builder/types/common"
 	beacon "github.com/protolambda/zrnt/eth2/beacon/common"
 )
 
 type PayloadAttributesModifier func(*api.PayloadAttributes, beacon.Slot) (bool, error)
-type PayloadModifier func(*api.ExecutableData, beacon.Slot) (bool, error)
+type PayloadModifier func(basePayload *api.ExecutableData, versionedHashes []el_common.Hash, blobBundle *api.BlobsBundleV1, beaconRoot *el_common.Hash, currentSlot beacon.Slot) (bool, error)
 type ErrorProducer func(beacon.Slot) error
 type PayloadWeiBidModifier func(*big.Int) (*big.Int, error)
-type GetBuilderBidVersion func(beacon.Slot) (common.BuilderBid, string, error)
+type GetBuilderBidVersion func(beacon.Slot) (common.BuilderBid, common.BlobsBundle, string, error)
 
 type config struct {
 	id                      int
@@ -34,6 +37,8 @@ type config struct {
 	payloadModifier      PayloadModifier
 	errorOnHeaderRequest ErrorProducer
 	errorOnPayloadReveal ErrorProducer
+
+	getPayloadDelay time.Duration
 
 	builderBidVersionResolver GetBuilderBidVersion
 
@@ -302,6 +307,19 @@ func WithErrorOnPayloadRevealAtSlot(slot beacon.Slot) Option {
 	}
 }
 
+func WithGetPayloadDelay(delay time.Duration) Option {
+	return Option{
+		apply: func(m *MockBuilder) error {
+			m.cfg.mutex.Lock()
+			defer m.cfg.mutex.Unlock()
+
+			m.cfg.getPayloadDelay = delay
+			return nil
+		},
+		description: fmt.Sprintf("WithGetPayloadDelay(%d)", delay),
+	}
+}
+
 // Specific function modifiers
 
 type PayloadInvalidation string
@@ -313,6 +331,7 @@ const (
 	INVALIDATE_PAYLOAD_BASE_FEE     = "base_fee"
 	INVALIDATE_PAYLOAD_UNCLE_HASH   = "uncle_hash"
 	INVALIDATE_PAYLOAD_RECEIPT_HASH = "receipt_hash"
+	INVALIDATE_PAYLOAD_BEACON_ROOT  = "beaconr_root"
 )
 
 var PayloadInvalidationTypes = map[string]PayloadInvalidation{
@@ -322,6 +341,10 @@ var PayloadInvalidationTypes = map[string]PayloadInvalidation{
 	INVALIDATE_PAYLOAD_BASE_FEE:     INVALIDATE_PAYLOAD_BASE_FEE,
 	INVALIDATE_PAYLOAD_UNCLE_HASH:   INVALIDATE_PAYLOAD_UNCLE_HASH,
 	INVALIDATE_PAYLOAD_RECEIPT_HASH: INVALIDATE_PAYLOAD_RECEIPT_HASH,
+	INVALIDATE_PAYLOAD_BEACON_ROOT:  INVALIDATE_PAYLOAD_BEACON_ROOT,
+	// INVALIDATE_BLOB_BUNDLE_COMMITMENT: INVALIDATE_BLOB_BUNDLE_COMMITMENT,
+	// INVALIDATE_BLOB_BUNDLE_PROOF: INVALIDATE_BLOB_BUNDLE_PROOF,
+	// INVALIDATE_BLOB_BUNDLE_BLOB: INVALIDATE_BLOB_BUNDLE_BLOB,
 }
 
 func PayloadInvalidationTypeNames() []string {
@@ -337,14 +360,13 @@ func PayloadInvalidationTypeNames() []string {
 func genPayloadInvalidator(
 	slot beacon.Slot,
 	invType PayloadInvalidation,
-) func(*api.ExecutableData, beacon.Slot) (bool, error) {
-	return func(ed *api.ExecutableData, s beacon.Slot) (bool, error) {
+) func(*api.ExecutableData, []el_common.Hash, *api.BlobsBundleV1, *el_common.Hash, beacon.Slot) (bool, error) {
+	return func(ed *api.ExecutableData, versionedHashes []el_common.Hash, blobBundle *api.BlobsBundleV1, beaconRoot *el_common.Hash, s beacon.Slot) (bool, error) {
 		if s >= slot {
-			if b, err := api.ExecutableDataToBlock(*ed); err != nil {
+			if b, err := api.ExecutableDataToBlock(*ed, versionedHashes, beaconRoot); err != nil {
 				return false, err
 			} else {
 				header := b.Header()
-
 				switch invType {
 				case INVALIDATE_PAYLOAD_STATE_ROOT:
 					_, err = rand.Read(header.Root[:])
@@ -363,6 +385,14 @@ func genPayloadInvalidator(
 				case INVALIDATE_PAYLOAD_RECEIPT_HASH:
 					_, err = rand.Read(header.ReceiptHash[:])
 					copy(ed.ReceiptsRoot[:], header.ReceiptHash[:])
+				case INVALIDATE_PAYLOAD_BEACON_ROOT:
+					if header.BeaconRoot == nil {
+						header.BeaconRoot = new(el_common.Hash)
+					}
+					_, err = rand.Read(header.BeaconRoot[:])
+					if beaconRoot != nil {
+						copy(beaconRoot[:], header.BeaconRoot[:])
+					}
 				default:
 					panic(fmt.Errorf(
 						"unknown invalidation type: %s",
@@ -435,6 +465,7 @@ const (
 	INVALIDATE_ATTR_TIMESTAMP                  = "timestamp"
 	INVALIDATE_ATTR_PREV_RANDAO                = "prevrandao"
 	INVALIDATE_ATTR_RANDOM                     = "random"
+	INVALIDATE_ATTR_BEACON_ROOT                = "beacon_root"
 )
 
 var PayloadAttrInvalidationTypes = map[string]PayloadAttributesInvalidation{
@@ -447,6 +478,7 @@ var PayloadAttrInvalidationTypes = map[string]PayloadAttributesInvalidation{
 	INVALIDATE_ATTR_TIMESTAMP:                  INVALIDATE_ATTR_TIMESTAMP,
 	INVALIDATE_ATTR_PREV_RANDAO:                INVALIDATE_ATTR_PREV_RANDAO,
 	INVALIDATE_ATTR_RANDOM:                     INVALIDATE_ATTR_RANDOM,
+	INVALIDATE_ATTR_BEACON_ROOT:                INVALIDATE_ATTR_BEACON_ROOT,
 }
 
 func PayloadAttrInvalidationTypeNames() []string {
@@ -502,6 +534,12 @@ func genPayloadAttributesInvalidator(
 				return true, nil
 			case INVALIDATE_ATTR_PREV_RANDAO, INVALIDATE_ATTR_RANDOM:
 				_, err := rand.Read(pa.Random[:])
+				if err != nil {
+					panic(err)
+				}
+				return true, nil
+			case INVALIDATE_ATTR_BEACON_ROOT:
+				_, err := rand.Read(pa.BeaconRoot[:])
 				if err != nil {
 					panic(err)
 				}
@@ -568,10 +606,12 @@ func WithInvalidBuilderBidVersionAtSlot(
 		apply: func(m *MockBuilder) error {
 			m.cfg.mutex.Lock()
 			defer m.cfg.mutex.Unlock()
-			m.cfg.builderBidVersionResolver = func(slot beacon.Slot) (common.BuilderBid, string, error) {
+			m.cfg.builderBidVersionResolver = func(slot beacon.Slot) (common.BuilderBid, common.BlobsBundle, string, error) {
 				if slot >= activationSlot {
-					// Always return Bellatrix, until theres a new fork that can override capella
-					return &bellatrix.BuilderBid{}, "bellatrix", nil
+					if m.cfg.spec.SlotToEpoch(slot) >= m.cfg.spec.DENEB_FORK_EPOCH {
+						return &capella.BuilderBid{}, nil, "capella", nil
+					}
+					return &bellatrix.BuilderBid{}, nil, "bellatrix", nil
 				}
 				return m.DefaultBuilderBidVersionResolver(slot)
 			}
@@ -599,10 +639,12 @@ func WithInvalidBuilderBidVersionAtEpoch(
 				return err
 			}
 
-			m.cfg.builderBidVersionResolver = func(slot beacon.Slot) (common.BuilderBid, string, error) {
+			m.cfg.builderBidVersionResolver = func(slot beacon.Slot) (common.BuilderBid, common.BlobsBundle, string, error) {
 				if slot >= activationSlot {
-					// Always return Bellatrix, until theres a new fork that can override capella
-					return &bellatrix.BuilderBid{}, "bellatrix", nil
+					if m.cfg.spec.SlotToEpoch(slot) >= m.cfg.spec.DENEB_FORK_EPOCH {
+						return &capella.BuilderBid{}, nil, "capella", nil
+					}
+					return &bellatrix.BuilderBid{}, nil, "bellatrix", nil
 				}
 				return m.DefaultBuilderBidVersionResolver(slot)
 			}

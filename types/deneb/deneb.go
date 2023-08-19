@@ -42,8 +42,9 @@ func (s *SignedBeaconBlock) BlockSignature() *beacon.BLSSignature {
 	return &s.Signature
 }
 
-func (s *SignedBeaconBlock) SetExecutionPayload(
+func (s *SignedBeaconBlock) Reveal(
 	ep common.ExecutionPayload,
+	bb common.BlobsBundle,
 ) error {
 	if ep, ok := ep.(common.ExecutionPayloadDeneb); ok {
 		s.Message.Body.ExecutionPayload.ParentHash = ep.GetParentHash()
@@ -63,37 +64,83 @@ func (s *SignedBeaconBlock) SetExecutionPayload(
 		s.Message.Body.ExecutionPayload.Withdrawals = ep.GetWithdrawals()
 		s.Message.Body.ExecutionPayload.BlobGasUsed = ep.GetBlobGasUsed()
 		s.Message.Body.ExecutionPayload.ExcessBlobGas = ep.GetExcessBlobGas()
+		s.Message.Body.BlobKZGCommitments = *bb.GetCommitments()
+
+		// TODO: Signed side-cars
 		return nil
 	} else {
 		return fmt.Errorf("invalid payload for deneb")
 	}
 }
 
+func (sbb *SignedBeaconBlock) Validate(pk *blsu.Pubkey, spec *beacon.Spec, genesisValidatorsRoot *tree.Root) error {
+	// TODO: This is incorrect because the response also contains the signed blob sidecars
+	//  and we need to validate those as well.
+	// TODO: Validate the beacon root matches the execution payload that we originally sent too
+	root := sbb.Root(spec)
+	sig := sbb.BlockSignature()
+	s, err := sig.Signature()
+	if err != nil {
+		return fmt.Errorf("unable to validate signature: %v", err)
+	}
+
+	dom := beacon.ComputeDomain(beacon.DOMAIN_BEACON_PROPOSER, spec.ForkVersion(sbb.Slot()), *genesisValidatorsRoot)
+	signingRoot := beacon.ComputeSigningRoot(root, dom)
+	if !blsu.Verify(pk, signingRoot[:], s) {
+		return fmt.Errorf("invalid signature")
+	}
+
+	return nil
+}
+
 type BuilderBid struct {
-	Header             deneb.ExecutionPayloadHeader `json:"header" yaml:"header"`
-	BlindedBlobsBundle deneb.BlindedBlobsBundle     `json:"blinded_blobs_bundle" yaml:"blinded_blobs_bundle"`
-	Value              view.Uint256View             `json:"value"  yaml:"value"`
-	PubKey             beacon.BLSPubkey             `json:"pubkey" yaml:"pubkey"`
+	Header             *deneb.ExecutionPayloadHeader `json:"header" yaml:"header"`
+	BlindedBlobsBundle *deneb.BlindedBlobsBundle     `json:"blinded_blobs_bundle" yaml:"blinded_blobs_bundle"`
+	Value              view.Uint256View              `json:"value"  yaml:"value"`
+	PubKey             beacon.BLSPubkey              `json:"pubkey" yaml:"pubkey"`
+}
+
+var _ common.BuilderBid = (*BuilderBid)(nil)
+
+type BlobsBundle struct {
+	deneb.BlobsBundle
+}
+
+func (bb *BlobsBundle) FromAPI(blobsBundle *api.BlobsBundleV1) error {
+	if blobsBundle == nil {
+		return fmt.Errorf("nil blobs bundle")
+	}
+
+	bb.KZGCommitments = make(beacon.KZGCommitments, len(blobsBundle.Commitments))
+	bb.KZGProofs = make(beacon.KZGProofs, len(blobsBundle.Proofs))
+	bb.Blobs = make(deneb.Blobs, len(blobsBundle.Blobs))
+
+	for i, blob := range blobsBundle.Blobs {
+		copy(bb.KZGCommitments[i][:], blobsBundle.Commitments[i][:])
+		copy(bb.KZGProofs[i][:], blobsBundle.Proofs[i][:])
+		copy(bb.Blobs[i][:], blob[:])
+	}
+
+	return nil
+}
+
+func (bb *BlobsBundle) Blinded(spec *beacon.Spec, hFn tree.HashFn) common.BlindedBlobsBundle {
+	return bb.BlobsBundle.Blinded(spec, hFn)
 }
 
 func (b *BuilderBid) HashTreeRoot(spec *beacon.Spec, hFn tree.HashFn) tree.Root {
 	return hFn.HashTreeRoot(
-		&b.Header,
-		spec.Wrap(&b.BlindedBlobsBundle),
+		b.Header,
+		spec.Wrap(b.BlindedBlobsBundle),
 		&b.Value,
 		&b.PubKey,
 	)
 }
 
-type SignedBuilderBid struct {
-	Message   *BuilderBid         `json:"message" yaml:"message"`
-	Signature beacon.BLSSignature `json:"signature" yaml:"signature"`
-}
-
-func (b *BuilderBid) FromExecutableData(
+func (b *BuilderBid) Build(
 	spec *beacon.Spec,
 	ed *api.ExecutableData,
-	blobsBundle *api.BlobsBundleV1, // TODO: use this
+	blobsBundle common.BlobsBundle,
 ) error {
 	if ed == nil {
 		return fmt.Errorf("nil execution payload")
@@ -136,6 +183,21 @@ func (b *BuilderBid) FromExecutableData(
 	withdrawalsRoot := withdrawals.HashTreeRoot(spec, tree.GetHashFn())
 	copy(b.Header.WithdrawalsRoot[:], withdrawalsRoot[:])
 
+	if ed.BlobGasUsed == nil {
+		return fmt.Errorf("execution data does not contain blob gas used")
+	}
+	b.Header.BlobGasUsed = view.Uint64View(*ed.BlobGasUsed)
+	if ed.ExcessBlobGas == nil {
+		return fmt.Errorf("execution data does not contain excess blob gas")
+	}
+	b.Header.ExcessBlobGas = view.Uint64View(*ed.ExcessBlobGas)
+
+	if blobsBundle == nil {
+		return fmt.Errorf("nil blobs bundle")
+	}
+
+	b.BlindedBlobsBundle = blobsBundle.Blinded(spec, tree.GetHashFn()).(*deneb.BlindedBlobsBundle)
+
 	return nil
 }
 
@@ -152,14 +214,14 @@ func (b *BuilderBid) Sign(
 	domain beacon.BLSDomain,
 	sk *blsu.SecretKey,
 	pk *blsu.Pubkey,
-) (*SignedBuilderBid, error) {
+) (*common.SignedBuilderBid, error) {
 	pkBytes := pk.Serialize()
 	copy(b.PubKey[:], pkBytes[:])
 	sigRoot := beacon.ComputeSigningRoot(
 		b.HashTreeRoot(spec, tree.GetHashFn()),
 		domain,
 	)
-	return &SignedBuilderBid{
+	return &common.SignedBuilderBid{
 		Message:   b,
 		Signature: beacon.BLSSignature(blsu.Sign(sk, sigRoot[:]).Serialize()),
 	}, nil
