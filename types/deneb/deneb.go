@@ -14,37 +14,38 @@ import (
 	"github.com/protolambda/ztyp/view"
 )
 
-type SignedBeaconBlock deneb.SignedBeaconBlock
+const Version = "deneb"
 
 type SignedBlindedBlockContents struct {
-	SignedBeaconBlock        `json:"signed_beacon_block" yaml:"signed_beacon_block"`
-	SignedBlindedBlobSidecar []deneb.SignedBlindedBlobSidecar `json:"signed_blinded_blob_sidecars" yaml:"signed_blinded_blob_sidecars"`
+	// We use the unblinded version of the
+	SignedBlindedBeaconBlock  deneb.SignedBlindedBeaconBlock   `json:"signed_blinded_block" yaml:"signed_blinded_block"`
+	SignedBlindedBlobSidecars []deneb.SignedBlindedBlobSidecar `json:"signed_blinded_blob_sidecars" yaml:"signed_blinded_blob_sidecars"`
 }
 
 func (s *SignedBlindedBlockContents) ExecutionPayloadHash() el_common.Hash {
 	var hash el_common.Hash
-	copy(hash[:], s.Message.Body.ExecutionPayload.BlockHash[:])
+	copy(hash[:], s.SignedBlindedBeaconBlock.Message.Body.ExecutionPayloadHeader.BlockHash[:])
 	return hash
 }
 
 func (s *SignedBlindedBlockContents) Root(spec *beacon.Spec) tree.Root {
-	return s.Message.HashTreeRoot(spec, tree.GetHashFn())
+	return s.SignedBlindedBeaconBlock.Message.HashTreeRoot(spec, tree.GetHashFn())
 }
 
 func (s *SignedBlindedBlockContents) StateRoot() tree.Root {
-	return s.Message.StateRoot
+	return s.SignedBlindedBeaconBlock.Message.StateRoot
 }
 
 func (s *SignedBlindedBlockContents) Slot() beacon.Slot {
-	return s.Message.Slot
+	return s.SignedBlindedBeaconBlock.Message.Slot
 }
 
 func (s *SignedBlindedBlockContents) ProposerIndex() beacon.ValidatorIndex {
-	return s.Message.ProposerIndex
+	return s.SignedBlindedBeaconBlock.Message.ProposerIndex
 }
 
 func (s *SignedBlindedBlockContents) BlockSignature() *beacon.BLSSignature {
-	return &s.Signature
+	return &s.SignedBlindedBeaconBlock.Signature
 }
 
 type UnblindedResponseData struct {
@@ -52,82 +53,87 @@ type UnblindedResponseData struct {
 	BlobsBundle      *deneb.BlobsBundle      `json:"blobs_bundle" yaml:"blobs_bundle"`
 }
 
-func (s *SignedBlindedBlockContents) Reveal(
-	ep common.ExecutionPayload,
-	bb common.BlobsBundle,
-) (*common.UnblindedResponse, error) {
-	denebPayload, ok := ep.(common.ExecutionPayloadDeneb)
+func (b *BuilderBid) ValidateReveal(publicKey *blsu.Pubkey, signedBeaconResponse common.SignedBeaconResponse, spec *beacon.Spec, slot beacon.Slot, genesisValidatorsRoot *tree.Root) (*common.UnblindedResponse, error) {
+
+	sbb, ok := signedBeaconResponse.(*SignedBlindedBlockContents)
 	if !ok {
-		return nil, fmt.Errorf("invalid payload for deneb")
+		return nil, fmt.Errorf("invalid signed beacon response")
 	}
 
-	s.Message.Body.ExecutionPayload.ParentHash = ep.GetParentHash()
-	s.Message.Body.ExecutionPayload.FeeRecipient = ep.GetFeeRecipient()
-	s.Message.Body.ExecutionPayload.StateRoot = ep.GetStateRoot()
-	s.Message.Body.ExecutionPayload.ReceiptsRoot = ep.GetReceiptsRoot()
-	s.Message.Body.ExecutionPayload.LogsBloom = ep.GetLogsBloom()
-	s.Message.Body.ExecutionPayload.PrevRandao = ep.GetPrevRandao()
-	s.Message.Body.ExecutionPayload.BlockNumber = ep.GetBlockNumber()
-	s.Message.Body.ExecutionPayload.GasLimit = ep.GetGasLimit()
-	s.Message.Body.ExecutionPayload.GasUsed = ep.GetGasUsed()
-	s.Message.Body.ExecutionPayload.Timestamp = ep.GetTimestamp()
-	s.Message.Body.ExecutionPayload.ExtraData = ep.GetExtraData()
-	s.Message.Body.ExecutionPayload.BaseFeePerGas = ep.GetBaseFeePerGas()
-	s.Message.Body.ExecutionPayload.BlockHash = ep.GetBlockHash()
-	s.Message.Body.ExecutionPayload.Transactions = ep.GetTransactions()
-	s.Message.Body.ExecutionPayload.Withdrawals = denebPayload.GetWithdrawals()
-	s.Message.Body.ExecutionPayload.BlobGasUsed = denebPayload.GetBlobGasUsed()
-	s.Message.Body.ExecutionPayload.ExcessBlobGas = denebPayload.GetExcessBlobGas()
+	blockRoot := sbb.SignedBlindedBeaconBlock.Message.HashTreeRoot(spec, tree.GetHashFn())
+	s, err := sbb.SignedBlindedBeaconBlock.Signature.Signature()
+	if err != nil {
+		return nil, fmt.Errorf("unable to validate block signature: %v", err)
+	}
 
-	// TODO: Signed side-cars
+	beaconBlock, err := sbb.SignedBlindedBeaconBlock.Message.Unblind(spec, b.Payload.ExecutionPayload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unblind block: %v", err)
+	}
+	if beaconBlock.HashTreeRoot(spec, tree.GetHashFn()) != blockRoot {
+		return nil, fmt.Errorf("unblinded block root does not match")
+	}
 
-	var (
-		commitments = bb.GetCommitments()
-		proofs      = bb.GetProofs()
-		blobs       = bb.GetBlobs()
-	)
+	dom := beacon.ComputeDomain(beacon.DOMAIN_BEACON_PROPOSER, spec.ForkVersion(slot), *genesisValidatorsRoot)
+	signingRoot := beacon.ComputeSigningRoot(blockRoot, dom)
+	if !blsu.Verify(publicKey, signingRoot[:], s) {
+		return nil, fmt.Errorf("block invalid signature")
+	}
+
+	for i, signedBlindedBlobSidecar := range sbb.SignedBlindedBlobSidecars {
+		fullBlob := b.BlobsBundle.BlobsBundle.Blobs[i]
+		commitment := b.BlobsBundle.BlobsBundle.KZGCommitments[i]
+		proof := b.BlobsBundle.BlobsBundle.KZGProofs[i]
+
+		blobSidecar := deneb.BlobSidecar{
+			BlockRoot:       blockRoot,
+			Index:           deneb.BlobIndex(i),
+			Slot:            slot,
+			BlockParentRoot: b.ParentBlockRoot,
+			ProposerIndex:   b.ProposerIndex,
+			Blob:            fullBlob,
+			KZGCommitment:   commitment,
+			KZGProof:        proof,
+		}
+
+		// Compare roots
+		rootWant := blobSidecar.HashTreeRoot(spec, tree.GetHashFn())
+		// Calculating root of a blinded blob sidecar does not require the spec because only the blob length is spec-dependent
+		root := signedBlindedBlobSidecar.Message.HashTreeRoot(tree.GetHashFn())
+		if root != rootWant {
+			return nil, fmt.Errorf("unblinded blob sidecar roots don't match: want: %s, got: %s", rootWant, root)
+		}
+		dom := beacon.ComputeDomain(beacon.DOMAIN_BLOB_SIDECAR, spec.ForkVersion(slot), *genesisValidatorsRoot)
+		signingRoot := beacon.ComputeSigningRoot(root, dom)
+		if !blsu.Verify(publicKey, signingRoot[:], s) {
+			return nil, fmt.Errorf("blob sidecar %d invalid signature", i)
+		}
+	}
+
 	return &common.UnblindedResponse{
-		Version: "deneb",
+		Version: Version,
 		Data: &UnblindedResponseData{
-			ExecutionPayload: &s.Message.Body.ExecutionPayload,
-			BlobsBundle: &deneb.BlobsBundle{
-				KZGCommitments: *commitments,
-				KZGProofs:      *proofs,
-				Blobs:          *blobs,
-			},
+			ExecutionPayload: b.Payload.ExecutionPayload,
+			BlobsBundle:      b.BlobsBundle.BlobsBundle,
 		},
 	}, nil
 }
 
-func (sbb *SignedBlindedBlockContents) Validate(pk *blsu.Pubkey, spec *beacon.Spec, genesisValidatorsRoot *tree.Root) error {
-	// TODO: This is incorrect because the response also contains the signed blob sidecars
-	//  and we need to validate those as well.
-	// TODO: Validate the beacon root matches the execution payload that we originally sent too
-	// TODO: Validate kzg_commitments match the ones we originally sent too
-	root := sbb.Root(spec)
-	sig := sbb.BlockSignature()
-	s, err := sig.Signature()
-	if err != nil {
-		return fmt.Errorf("unable to validate signature: %v", err)
-	}
-
-	dom := beacon.ComputeDomain(beacon.DOMAIN_BEACON_PROPOSER, spec.ForkVersion(sbb.Slot()), *genesisValidatorsRoot)
-	signingRoot := beacon.ComputeSigningRoot(root, dom)
-	if !blsu.Verify(pk, signingRoot[:], s) {
-		return fmt.Errorf("invalid signature")
-	}
+func (sbb *SignedBlindedBlockContents) Validate(pk *blsu.Pubkey, spec *beacon.Spec, slot beacon.Slot, genesisValidatorsRoot *tree.Root, ep common.ExecutionPayload, bb common.BlobsBundle) error {
 
 	return nil
 }
 
 type BlobsBundle struct {
-	deneb.BlobsBundle
+	*deneb.BlobsBundle
 }
 
 func (bb *BlobsBundle) FromAPI(blobsBundle *api.BlobsBundleV1) error {
 	if blobsBundle == nil {
 		return fmt.Errorf("nil blobs bundle")
 	}
+
+	bb.BlobsBundle = &deneb.BlobsBundle{}
 
 	bb.KZGCommitments = make(beacon.KZGCommitments, len(blobsBundle.Commitments))
 	bb.KZGProofs = make(beacon.KZGProofs, len(blobsBundle.Proofs))
@@ -142,18 +148,23 @@ func (bb *BlobsBundle) FromAPI(blobsBundle *api.BlobsBundleV1) error {
 	return nil
 }
 
-func (bb *BlobsBundle) Blinded(spec *beacon.Spec, hFn tree.HashFn) common.BlindedBlobsBundle {
-	return bb.BlobsBundle.Blinded(spec, hFn)
-}
+var _ common.BlobsBundle = (*BlobsBundle)(nil)
 
 type BuilderBid struct {
-	Header             *deneb.ExecutionPayloadHeader `json:"header" yaml:"header"`
-	BlindedBlobsBundle *deneb.BlindedBlobsBundle     `json:"blinded_blobs_bundle" yaml:"blinded_blobs_bundle"`
-	Value              view.Uint256View              `json:"value"  yaml:"value"`
-	PubKey             beacon.BLSPubkey              `json:"pubkey" yaml:"pubkey"`
+	Payload                  *ExecutionPayload             `json:"-" yaml:"-"`
+	Header                   *deneb.ExecutionPayloadHeader `json:"header" yaml:"header"`
+	BlobsBundle              *BlobsBundle                  `json:"-" yaml:"-"`
+	BlindedBlobsBundle       *deneb.BlindedBlobsBundle     `json:"blinded_blobs_bundle" yaml:"blinded_blobs_bundle"`
+	Value                    view.Uint256View              `json:"value"  yaml:"value"`
+	PubKey                   beacon.BLSPubkey              `json:"pubkey" yaml:"pubkey"`
+	common.BuilderBidContext `json:"-" yaml:"-"`
 }
 
 var _ common.BuilderBid = (*BuilderBid)(nil)
+
+func (b *BuilderBid) Version() string {
+	return Version
+}
 
 func (b *BuilderBid) HashTreeRoot(spec *beacon.Spec, hFn tree.HashFn) tree.Root {
 	return hFn.HashTreeRoot(
@@ -167,65 +178,37 @@ func (b *BuilderBid) HashTreeRoot(spec *beacon.Spec, hFn tree.HashFn) tree.Root 
 func (b *BuilderBid) Build(
 	spec *beacon.Spec,
 	ed *api.ExecutableData,
-	blobsBundle common.BlobsBundle,
+	bb *api.BlobsBundleV1,
 ) error {
 	if ed == nil {
 		return fmt.Errorf("nil execution payload")
 	}
-	if ed.Withdrawals == nil {
-		return fmt.Errorf("execution data does not contain withdrawals")
-	}
-	copy(b.Header.ParentHash[:], ed.ParentHash[:])
-	copy(b.Header.FeeRecipient[:], ed.FeeRecipient[:])
-	copy(b.Header.StateRoot[:], ed.StateRoot[:])
-	copy(b.Header.ReceiptsRoot[:], ed.ReceiptsRoot[:])
-	copy(b.Header.LogsBloom[:], ed.LogsBloom[:])
-	copy(b.Header.PrevRandao[:], ed.Random[:])
 
-	b.Header.BlockNumber = view.Uint64View(ed.Number)
-	b.Header.GasLimit = view.Uint64View(ed.GasLimit)
-	b.Header.GasUsed = view.Uint64View(ed.GasUsed)
-	b.Header.Timestamp = beacon.Timestamp(ed.Timestamp)
+	b.Payload = new(ExecutionPayload)
+	b.Payload.FromExecutableData(ed)
 
-	b.Header.ExtraData = make(beacon.ExtraData, len(ed.ExtraData))
-	copy(b.Header.ExtraData[:], ed.ExtraData[:])
-	b.Header.BaseFeePerGas.SetFromBig(ed.BaseFeePerGas)
-	copy(b.Header.BlockHash[:], ed.BlockHash[:])
+	b.Header = b.Payload.Header(spec)
 
-	txs := make(beacon.PayloadTransactions, len(ed.Transactions))
-	for i, tx := range ed.Transactions {
-		txs[i] = make(beacon.Transaction, len(tx))
-		copy(txs[i][:], tx[:])
-	}
-	txRoot := txs.HashTreeRoot(spec, tree.GetHashFn())
-	copy(b.Header.TransactionsRoot[:], txRoot[:])
-
-	withdrawals := make(beacon.Withdrawals, len(ed.Withdrawals))
-	for i, w := range ed.Withdrawals {
-		withdrawals[i].Index = beacon.WithdrawalIndex(w.Index)
-		withdrawals[i].ValidatorIndex = beacon.ValidatorIndex(w.Validator)
-		copy(withdrawals[i].Address[:], w.Address[:])
-		withdrawals[i].Amount = beacon.Gwei(w.Amount)
-	}
-	withdrawalsRoot := withdrawals.HashTreeRoot(spec, tree.GetHashFn())
-	copy(b.Header.WithdrawalsRoot[:], withdrawalsRoot[:])
-
-	if ed.BlobGasUsed == nil {
-		return fmt.Errorf("execution data does not contain blob gas used")
-	}
-	b.Header.BlobGasUsed = view.Uint64View(*ed.BlobGasUsed)
-	if ed.ExcessBlobGas == nil {
-		return fmt.Errorf("execution data does not contain excess blob gas")
-	}
-	b.Header.ExcessBlobGas = view.Uint64View(*ed.ExcessBlobGas)
-
-	if blobsBundle == nil {
+	if bb == nil {
 		return fmt.Errorf("nil blobs bundle")
 	}
 
-	b.BlindedBlobsBundle = blobsBundle.Blinded(spec, tree.GetHashFn()).(*deneb.BlindedBlobsBundle)
+	b.BlobsBundle = new(BlobsBundle)
+	if err := b.BlobsBundle.FromAPI(bb); err != nil {
+		return err
+	}
+
+	b.BlindedBlobsBundle = b.BlobsBundle.BlobsBundle.Blinded(spec, tree.GetHashFn())
 
 	return nil
+}
+
+func (b *BuilderBid) FullPayload() common.ExecutionPayload {
+	return b.Payload
+}
+
+func (b *BuilderBid) FullBlobsBundle() common.BlobsBundle {
+	return b.BlobsBundle
 }
 
 func (b *BuilderBid) SetValue(value *big.Int) {
@@ -234,6 +217,12 @@ func (b *BuilderBid) SetValue(value *big.Int) {
 
 func (b *BuilderBid) SetPubKey(pk beacon.BLSPubkey) {
 	b.PubKey = pk
+}
+
+func (b *BuilderBid) SetContext(parentBlockRoot tree.Root, slot beacon.Slot, proposerIndex beacon.ValidatorIndex) {
+	b.ParentBlockRoot = parentBlockRoot
+	b.Slot = slot
+	b.ProposerIndex = proposerIndex
 }
 
 func (b *BuilderBid) Sign(
@@ -254,7 +243,9 @@ func (b *BuilderBid) Sign(
 	}, nil
 }
 
-type ExecutionPayload deneb.ExecutionPayload
+type ExecutionPayload struct {
+	*deneb.ExecutionPayload
+}
 
 func (p *ExecutionPayload) FromExecutableData(ed *api.ExecutableData) error {
 	if ed == nil {
@@ -263,6 +254,14 @@ func (p *ExecutionPayload) FromExecutableData(ed *api.ExecutableData) error {
 	if ed.Withdrawals == nil {
 		return fmt.Errorf("execution data does not contain withdrawals")
 	}
+	if ed.BlobGasUsed == nil {
+		return fmt.Errorf("execution data does not contain blob gas used")
+	}
+	if ed.ExcessBlobGas == nil {
+		return fmt.Errorf("execution data does not contain excess blob gas")
+	}
+
+	p.ExecutionPayload = &deneb.ExecutionPayload{}
 	copy(p.ParentHash[:], ed.ParentHash[:])
 	copy(p.FeeRecipient[:], ed.FeeRecipient[:])
 	copy(p.StateRoot[:], ed.StateRoot[:])
@@ -291,75 +290,16 @@ func (p *ExecutionPayload) FromExecutableData(ed *api.ExecutableData) error {
 		copy(p.Withdrawals[i].Address[:], w.Address[:])
 		p.Withdrawals[i].Amount = beacon.Gwei(w.Amount)
 	}
+	p.BlobGasUsed = view.Uint64View(*ed.BlobGasUsed)
+	p.ExcessBlobGas = view.Uint64View(*ed.ExcessBlobGas)
 	return nil
 }
 
-func (p *ExecutionPayload) GetParentHash() beacon.Hash32 {
-	return p.ParentHash
-}
-
-func (p *ExecutionPayload) GetFeeRecipient() beacon.Eth1Address {
-	return p.FeeRecipient
-}
-
-func (p *ExecutionPayload) GetStateRoot() beacon.Bytes32 {
-	return p.StateRoot
-}
-
-func (p *ExecutionPayload) GetReceiptsRoot() beacon.Bytes32 {
-	return p.ReceiptsRoot
-}
-
-func (p *ExecutionPayload) GetLogsBloom() beacon.LogsBloom {
-	return p.LogsBloom
-}
-
-func (p *ExecutionPayload) GetPrevRandao() beacon.Bytes32 {
-	return p.PrevRandao
-}
-
-func (p *ExecutionPayload) GetBlockNumber() view.Uint64View {
-	return p.BlockNumber
-}
-
-func (p *ExecutionPayload) GetGasLimit() view.Uint64View {
-	return p.GasLimit
-}
-
-func (p *ExecutionPayload) GetGasUsed() view.Uint64View {
-	return p.GasUsed
-}
-
-func (p *ExecutionPayload) GetTimestamp() beacon.Timestamp {
-	return p.Timestamp
-}
-
-func (p *ExecutionPayload) GetExtraData() beacon.ExtraData {
-	return p.ExtraData
-}
-
-func (p *ExecutionPayload) GetBaseFeePerGas() view.Uint256View {
-	return p.BaseFeePerGas
-}
-
-func (p *ExecutionPayload) GetBlockHash() beacon.Hash32 {
+func (p *ExecutionPayload) GetBlockHash() tree.Root {
+	if p == nil {
+		panic("nil execution payload")
+	}
 	return p.BlockHash
 }
 
-func (p *ExecutionPayload) GetTransactions() beacon.PayloadTransactions {
-	return p.Transactions
-}
-
-func (p *ExecutionPayload) GetWithdrawals() beacon.Withdrawals {
-	return p.Withdrawals
-}
-
-func (p *ExecutionPayload) GetBlobGasUsed() view.Uint64View {
-	return p.BlobGasUsed
-}
-
-func (p *ExecutionPayload) GetExcessBlobGas() view.Uint64View {
-	return p.ExcessBlobGas
-}
-
-var _ common.ExecutionPayloadDeneb = (*ExecutionPayload)(nil)
+var _ common.ExecutionPayload = (*ExecutionPayload)(nil)

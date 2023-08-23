@@ -179,6 +179,11 @@ func main() {
 		panic(err)
 	}
 
+	logrus.SetFormatter(&logrus.TextFormatter{
+		FullTimestamp: true,
+		TimestampFormat: time.RFC3339Nano,
+	})
+
 	if clEndpoint == "" {
 		fatalf("Missing required consensus client endpoint")
 	}
@@ -256,7 +261,7 @@ func main() {
 		options = append(
 			options,
 			mock_builder.WithGetPayloadDelay(
-				time.Millisecond*time.Duration(getPayloadMsDelay),
+				getPayloadMsDelay,
 			),
 		)
 	}

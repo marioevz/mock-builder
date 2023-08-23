@@ -6,7 +6,6 @@ import (
 	"math/big"
 	"net"
 	"sync"
-	"time"
 
 	api "github.com/ethereum/go-ethereum/beacon/engine"
 	el_common "github.com/ethereum/go-ethereum/common"
@@ -21,7 +20,7 @@ type PayloadAttributesModifier func(*api.PayloadAttributes, beacon.Slot) (bool, 
 type PayloadModifier func(basePayload *api.ExecutableData, versionedHashes []el_common.Hash, blobBundle *api.BlobsBundleV1, beaconRoot *el_common.Hash, currentSlot beacon.Slot) (bool, error)
 type ErrorProducer func(beacon.Slot) error
 type PayloadWeiBidModifier func(*big.Int) (*big.Int, error)
-type GetBuilderBidVersion func(beacon.Slot) (common.BuilderBid, common.BlobsBundle, string, error)
+type GetBuilderBidVersion func(beacon.Slot) (common.BuilderBid, error)
 
 type config struct {
 	id                      int
@@ -38,7 +37,7 @@ type config struct {
 	errorOnHeaderRequest ErrorProducer
 	errorOnPayloadReveal ErrorProducer
 
-	getPayloadDelay time.Duration
+	getPayloadDelayMs int
 
 	builderBidVersionResolver GetBuilderBidVersion
 
@@ -307,16 +306,16 @@ func WithErrorOnPayloadRevealAtSlot(slot beacon.Slot) Option {
 	}
 }
 
-func WithGetPayloadDelay(delay time.Duration) Option {
+func WithGetPayloadDelay(ms int) Option {
 	return Option{
 		apply: func(m *MockBuilder) error {
 			m.cfg.mutex.Lock()
 			defer m.cfg.mutex.Unlock()
 
-			m.cfg.getPayloadDelay = delay
+			m.cfg.getPayloadDelayMs = ms
 			return nil
 		},
-		description: fmt.Sprintf("WithGetPayloadDelay(%d)", delay),
+		description: fmt.Sprintf("WithGetPayloadDelay(%d)", ms),
 	}
 }
 
@@ -606,12 +605,12 @@ func WithInvalidBuilderBidVersionAtSlot(
 		apply: func(m *MockBuilder) error {
 			m.cfg.mutex.Lock()
 			defer m.cfg.mutex.Unlock()
-			m.cfg.builderBidVersionResolver = func(slot beacon.Slot) (common.BuilderBid, common.BlobsBundle, string, error) {
+			m.cfg.builderBidVersionResolver = func(slot beacon.Slot) (common.BuilderBid, error) {
 				if slot >= activationSlot {
 					if m.cfg.spec.SlotToEpoch(slot) >= m.cfg.spec.DENEB_FORK_EPOCH {
-						return &capella.BuilderBid{}, nil, "capella", nil
+						return &capella.BuilderBid{}, nil
 					}
-					return &bellatrix.BuilderBid{}, nil, "bellatrix", nil
+					return &bellatrix.BuilderBid{}, nil
 				}
 				return m.DefaultBuilderBidVersionResolver(slot)
 			}
@@ -639,12 +638,12 @@ func WithInvalidBuilderBidVersionAtEpoch(
 				return err
 			}
 
-			m.cfg.builderBidVersionResolver = func(slot beacon.Slot) (common.BuilderBid, common.BlobsBundle, string, error) {
+			m.cfg.builderBidVersionResolver = func(slot beacon.Slot) (common.BuilderBid, error) {
 				if slot >= activationSlot {
 					if m.cfg.spec.SlotToEpoch(slot) >= m.cfg.spec.DENEB_FORK_EPOCH {
-						return &capella.BuilderBid{}, nil, "capella", nil
+						return &capella.BuilderBid{}, nil
 					}
-					return &bellatrix.BuilderBid{}, nil, "bellatrix", nil
+					return &bellatrix.BuilderBid{}, nil
 				}
 				return m.DefaultBuilderBidVersionResolver(slot)
 			}

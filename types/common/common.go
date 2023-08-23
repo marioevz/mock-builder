@@ -34,13 +34,24 @@ type SignedValidatorRegistrationV1 struct {
 	Signature common.BLSSignature     `json:"signature" yaml:"signature"`
 }
 
+type BuilderBidContext struct {
+	ParentBlockRoot tree.Root
+	Slot            beacon.Slot
+	ProposerIndex   beacon.ValidatorIndex
+}
+
 type BuilderBid interface {
-	Build(*beacon.Spec, *api.ExecutableData, BlobsBundle) error
+	Build(*beacon.Spec, *api.ExecutableData, *api.BlobsBundleV1) error
+	FullPayload() ExecutionPayload
+	FullBlobsBundle() BlobsBundle
 	SetValue(*big.Int)
 	SetPubKey(beacon.BLSPubkey)
+	SetContext(parentBlockRoot tree.Root, slot beacon.Slot, proposerIndex beacon.ValidatorIndex)
 	Sign(spec *beacon.Spec, domain beacon.BLSDomain,
 		sk *blsu.SecretKey,
 		pk *blsu.Pubkey) (*SignedBuilderBid, error)
+	ValidateReveal(publicKey *blsu.Pubkey, signedBeaconResponse SignedBeaconResponse, spec *beacon.Spec, slot beacon.Slot, genesisValidatorsRoot *tree.Root) (*UnblindedResponse, error)
+	Version() string
 }
 
 type SignedBuilderBid struct {
@@ -48,11 +59,9 @@ type SignedBuilderBid struct {
 	Signature common.BLSSignature `json:"signature" yaml:"signature"`
 }
 
-func (s *SignedBuilderBid) Versioned(
-	version string,
-) *VersionedSignedBuilderBid {
+func (s *SignedBuilderBid) Versioned() *VersionedSignedBuilderBid {
 	return &VersionedSignedBuilderBid{
-		Version: version,
+		Version: s.Message.Version(),
 		Data:    s,
 	}
 }
@@ -66,11 +75,9 @@ type SignedBeaconResponse interface {
 	ExecutionPayloadHash() el_common.Hash
 	Root(*beacon.Spec) tree.Root
 	StateRoot() tree.Root
-	Reveal(ExecutionPayload, BlobsBundle) (*UnblindedResponse, error)
 	Slot() beacon.Slot
 	ProposerIndex() beacon.ValidatorIndex
 	BlockSignature() *common.BLSSignature
-	Validate(publicKey *blsu.Pubkey, spec *beacon.Spec, genesisValidatorsRoot *tree.Root) error
 }
 
 type BlindedBlobsBundle interface {
@@ -84,36 +91,11 @@ type BlobsBundle interface {
 	GetCommitments() *beacon.KZGCommitments
 	GetProofs() *beacon.KZGProofs
 	GetBlobs() *deneb.Blobs
-	Blinded(spec *beacon.Spec, hFn tree.HashFn) BlindedBlobsBundle
 }
 
 type ExecutionPayload interface {
 	FromExecutableData(*api.ExecutableData) error
-	GetParentHash() beacon.Hash32
-	GetFeeRecipient() beacon.Eth1Address
-	GetStateRoot() beacon.Bytes32
-	GetReceiptsRoot() beacon.Bytes32
-	GetLogsBloom() beacon.LogsBloom
-	GetPrevRandao() beacon.Bytes32
-	GetBlockNumber() view.Uint64View
-	GetGasLimit() view.Uint64View
-	GetGasUsed() view.Uint64View
-	GetTimestamp() beacon.Timestamp
-	GetExtraData() beacon.ExtraData
-	GetBaseFeePerGas() view.Uint256View
-	GetBlockHash() beacon.Hash32
-	GetTransactions() beacon.PayloadTransactions
-}
-
-type ExecutionPayloadCapella interface {
-	ExecutionPayload
-	GetWithdrawals() beacon.Withdrawals
-}
-
-type ExecutionPayloadDeneb interface {
-	ExecutionPayloadCapella
-	GetBlobGasUsed() view.Uint64View
-	GetExcessBlobGas() view.Uint64View
+	GetBlockHash() tree.Root
 }
 
 type UnblindedResponse struct {
