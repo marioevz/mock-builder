@@ -214,8 +214,8 @@ github.com/marioevz/eth-clients v0.0.0-20230823175101-fdc85382188d h1:X5kDuhc/KJ
 github.com/marioevz/eth-clients v0.0.0-20230823175101-fdc85382188d/go.mod h1:LZb4HPhmomFs5C3Rxj57X83yp3qzQHgB/xDAsvrFmDw=
 github.com/marioevz/eth2api v0.0.0-20230823170424-c49aeeefbc40 h1:XjtFopxKQTfRvzPiVkWATIxmTzN+i068THS3r9KLoaA=
 github.com/marioevz/eth2api v0.0.0-20230823170424-c49aeeefbc40/go.mod h1:hcwWCT4sF1X7KsMZ535MvDZVk5M20Uyj+x2LARZjQsM=
-github.com/marioevz/zrnt v0.26.2-0.20230821200056-212398f65e33 h1:f+YrhNM0x+oqTNmBnqB6VqS6lweC1oJ17sASlVGKYd8=
-github.com/marioevz/zrnt v0.26.2-0.20230821200056-212398f65e33/go.mod h1:qcdX9CXFeVNCQK/q0nswpzhd+31RHMk2Ax/2lMsJ4Jw=
+github.com/marioevz/zrnt v0.26.2-0.20230824215908-29c8dd7802b5 h1:4S9KHu9u3i0ndaC623cRd9zA2LPHxNKt7sxgLDYYUew=
+github.com/marioevz/zrnt v0.26.2-0.20230824215908-29c8dd7802b5/go.mod h1:qcdX9CXFeVNCQK/q0nswpzhd+31RHMk2Ax/2lMsJ4Jw=
 github.com/mattn/go-colorable v0.1.2/go.mod h1:U0ppj6V5qS13XJ6of8GYAs25YV2eR4EVcfRqFIhoBtE=
 github.com/mattn/go-colorable v0.1.8/go.mod h1:u6P/XSegPjTcexA+o6vUJrdnUu04hMope9wVRipJSqc=
 github.com/mattn/go-colorable v0.1.11/go.mod h1:u5H1YNBxpqRaxsYJYSkiCWKzEfiAb1Gb520KVy5xxl4=
