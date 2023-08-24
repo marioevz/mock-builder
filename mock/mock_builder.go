@@ -473,9 +473,12 @@ func (m *MockBuilder) HandleGetExecutionPayloadHeader(
 	w http.ResponseWriter, req *http.Request,
 ) {
 	var (
-		prevRandao      el_common.Hash
 		payloadModified = false
 		vars            = PayloadHeaderRequestVarsParser(mux.Vars(req))
+
+		// Context related vars
+		ctx    context.Context
+		cancel context.CancelFunc
 	)
 
 	slot, err := vars.Slot()
@@ -532,23 +535,101 @@ func (m *MockBuilder) HandleGetExecutionPayloadHeader(
 	m.validatorPublicKeysMutex.Lock()
 	m.validatorPublicKeys[slot] = &pubkey
 	m.validatorPublicKeysMutex.Unlock()
-	// Request head state from the CL
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	state, err := m.cl.BeaconStateV2(ctx, eth2api.StateHead)
+
+	// Engine API Directive Versions and information required to build the payload
+	var (
+		getPayloadVersion        int    = 1
+		forkchoiceUpdatedVersion int    = 1
+		blobCommitmentVersion    byte   = 1
+		fork                     string = "bellatrix"
+
+		// Payload building requirements
+		withdrawalsRequired = false
+		beaconRootRequired  = false
+	)
+
+	// Determine Engine API Versions
+	if m.cfg.spec.SlotToEpoch(slot) >= m.cfg.spec.DENEB_FORK_EPOCH {
+		getPayloadVersion = 3
+		forkchoiceUpdatedVersion = 3
+		fork = "deneb"
+	} else if m.cfg.spec.SlotToEpoch(slot) >= m.cfg.spec.CAPELLA_FORK_EPOCH {
+		getPayloadVersion = 2
+		forkchoiceUpdatedVersion = 2
+		fork = "capella"
+	}
+
+	// Set requirements
+	if m.cfg.spec.SlotToEpoch(slot) >= m.cfg.spec.DENEB_FORK_EPOCH {
+		beaconRootRequired = true
+	}
+	if m.cfg.spec.SlotToEpoch(slot) >= m.cfg.spec.CAPELLA_FORK_EPOCH {
+		withdrawalsRequired = true
+	}
+
+	// Gather all required information from the CL
+	var (
+		stateId     = eth2api.StateHead
+		blockId     = eth2api.BlockHead
+		randaoMix   *tree.Root
+		withdrawals beacon.Withdrawals
+		blockHead   *beacon_client.VersionedSignedBeaconBlock
+	)
+
+	randaoMix, err = m.cl.StateRandaoMix(context.Background(), stateId)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{
 			"builder_id": m.cfg.id,
 			"slot":       slot,
 			"err":        err,
-		}).Error("Error getting beacon state from CL")
-		http.Error(
-			w,
-			"Unable to respond to header request",
-			http.StatusInternalServerError,
-		)
-		return
+		}).Info("Error getting randao mix from CL, will fallback to try to get the full state")
 	}
+
+	if withdrawalsRequired {
+		withdrawals, err = m.cl.ExpectedWithdrawals(context.Background(), stateId)
+		if err != nil {
+			logrus.WithFields(logrus.Fields{
+				"builder_id": m.cfg.id,
+				"slot":       slot,
+				"err":        err,
+			}).Info("Error getting expected withdrawals from CL, will fallback to try to get the full state")
+		}
+	}
+
+	blockHead, err = m.cl.BlockV2(context.Background(), blockId)
+
+	if randaoMix == nil || (withdrawalsRequired && withdrawals == nil) {
+		// We are missing information from the CL, request the full state to reproduce
+		// it from there
+		ctx, cancel = context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		state, err := m.cl.BeaconStateV2(ctx, stateId)
+		if err != nil {
+			logrus.WithFields(logrus.Fields{
+				"builder_id": m.cfg.id,
+				"slot":       slot,
+				"err":        err,
+			}).Error("Error getting beacon state from CL")
+			http.Error(
+				w,
+				"Unable to respond to header request",
+				http.StatusInternalServerError,
+			)
+			return
+		}
+
+		// PrevRandao
+		if randaoMix == nil {
+			prevRandaoMixes := state.RandaoMixes()
+			randaoMix = &prevRandaoMixes[m.cfg.spec.SlotToEpoch(slot-1)]
+		}
+
+		// Withdrawals
+		if withdrawalsRequired && withdrawals == nil {
+			withdrawals, err = state.NextWithdrawals(slot)
+		}
+	}
+
 	var forkchoiceState *api.ForkchoiceStateV1
 	if bytes.Equal(parentHash[:], EMPTY_HASH[:]) {
 		// Edge case where the CL is requesting us to build the very first block
@@ -572,7 +653,7 @@ func (m *MockBuilder) HandleGetExecutionPayloadHeader(
 		}
 	} else {
 		// Check if we have the correct beacon state
-		latestExecPayloadHeaderHash := state.LatestExecutionPayloadHeaderHash()
+		latestExecPayloadHeaderHash := blockHead.ExecutionPayloadBlockHash()
 		if !bytes.Equal(latestExecPayloadHeaderHash[:], parentHash[:]) {
 			logrus.WithFields(logrus.Fields{
 				"builder_id":                  m.cfg.id,
@@ -641,42 +722,14 @@ func (m *MockBuilder) HandleGetExecutionPayloadHeader(
 
 	}
 
-	// Engine API Directive Versions
-	var (
-		getPayloadVersion        int    = 1
-		forkchoiceUpdatedVersion int    = 1
-		blobCommitmentVersion    byte   = 1
-		fork                     string = "bellatrix"
-	)
-
-	// Determine Engine API Versions
-	if m.cfg.spec.SlotToEpoch(slot) >= m.cfg.spec.DENEB_FORK_EPOCH {
-		getPayloadVersion = 3
-		forkchoiceUpdatedVersion = 3
-		fork = "deneb"
-	} else if m.cfg.spec.SlotToEpoch(slot) >= m.cfg.spec.CAPELLA_FORK_EPOCH {
-		getPayloadVersion = 2
-		forkchoiceUpdatedVersion = 2
-		fork = "capella"
+	// Build payload attributes
+	pAttr := api.PayloadAttributes{
+		Timestamp:             m.SlotToTimestamp(slot),
+		SuggestedFeeRecipient: m.suggestedFeeRecipients[pubkey],
 	}
 
-	// Build payload attributes
-
-	// PrevRandao
-	prevRandaoMixes := state.RandaoMixes()
-	prevRandaoRoot := prevRandaoMixes[m.cfg.spec.SlotToEpoch(slot-1)]
-	copy(prevRandao[:], prevRandaoRoot[:])
-
-	// Timestamp
-	timestamp := m.SlotToTimestamp(slot)
-
-	// Suggested Fee Recipient
-	suggestedFeeRecipient := m.suggestedFeeRecipients[pubkey]
-
 	// Withdrawals
-	var withdrawals types.Withdrawals
-	if m.cfg.spec.SlotToEpoch(slot) >= m.cfg.spec.CAPELLA_FORK_EPOCH {
-		wSsz, err := state.NextWithdrawals(slot)
+	if withdrawalsRequired {
 		if err != nil {
 			logrus.WithFields(logrus.Fields{
 				"builder_id": m.cfg.id,
@@ -689,31 +742,25 @@ func (m *MockBuilder) HandleGetExecutionPayloadHeader(
 			)
 			return
 		}
-		withdrawals = make(types.Withdrawals, len(wSsz))
-		for i, w := range wSsz {
+		pAttr.Withdrawals = make(types.Withdrawals, len(withdrawals))
+		for i, w := range withdrawals {
 			newWithdrawal := types.Withdrawal{}
 			copy(newWithdrawal.Address[:], w.Address[:])
 			newWithdrawal.Amount = uint64(w.Amount)
 			newWithdrawal.Index = uint64(w.Index)
 			newWithdrawal.Validator = uint64(w.ValidatorIndex)
-			withdrawals[i] = &newWithdrawal
+			pAttr.Withdrawals[i] = &newWithdrawal
 		}
 	}
 	// Beacon Root for Deneb
-	var beaconRoot *el_common.Hash
-	if m.cfg.spec.SlotToEpoch(slot) >= m.cfg.spec.DENEB_FORK_EPOCH {
-		h := state.LatestBlockHeader()
-		beaconRoot = new(el_common.Hash)
-		copy(beaconRoot[:], h.BodyRoot[:])
+	if beaconRootRequired {
+		h := blockHead.Root()
+		pAttr.BeaconRoot = new(el_common.Hash)
+		copy(pAttr.BeaconRoot[:], h[:])
 	}
 
-	pAttr := api.PayloadAttributes{
-		Timestamp:             timestamp,
-		Random:                prevRandao,
-		SuggestedFeeRecipient: suggestedFeeRecipient,
-		Withdrawals:           withdrawals,
-		BeaconRoot:            beaconRoot,
-	}
+	// Copy randaoMix
+	copy(pAttr.Random[:], randaoMix[:])
 
 	m.cfg.mutex.Lock()
 	payloadAttrModifier := m.cfg.payloadAttrModifier
@@ -741,11 +788,11 @@ func (m *MockBuilder) HandleGetExecutionPayloadHeader(
 
 	logrus.WithFields(logrus.Fields{
 		"builder_id":            m.cfg.id,
-		"Timestamp":             timestamp,
-		"PrevRandao":            prevRandao,
-		"SuggestedFeeRecipient": suggestedFeeRecipient,
-		"Withdrawals":           withdrawals,
-		"BeaconRoot":            beaconRoot,
+		"Timestamp":             pAttr.Timestamp,
+		"PrevRandao":            pAttr.Random,
+		"SuggestedFeeRecipient": pAttr.SuggestedFeeRecipient,
+		"Withdrawals":           pAttr.Withdrawals,
+		"BeaconRoot":            pAttr.BeaconRoot,
 		"fork":                  fork,
 	}).Info("Built payload attributes for header")
 
@@ -810,7 +857,7 @@ func (m *MockBuilder) HandleGetExecutionPayloadHeader(
 
 	// Watermark payload
 	if m.cfg.extraDataWatermark != "" {
-		if err := ModifyExtraData(p, versionedHashes, beaconRoot, []byte(m.cfg.extraDataWatermark)); err != nil {
+		if err := ModifyExtraData(p, versionedHashes, pAttr.BeaconRoot, []byte(m.cfg.extraDataWatermark)); err != nil {
 			logrus.WithFields(logrus.Fields{
 				"builder_id": m.cfg.id,
 				"err":        err,
@@ -830,7 +877,7 @@ func (m *MockBuilder) HandleGetExecutionPayloadHeader(
 	m.cfg.mutex.Unlock()
 	if payloadModifier != nil {
 		oldHash := p.BlockHash
-		if mod, err := payloadModifier(p, versionedHashes, apiBlobsBundle, beaconRoot, slot); err != nil {
+		if mod, err := payloadModifier(p, versionedHashes, apiBlobsBundle, pAttr.BeaconRoot, slot); err != nil {
 			logrus.WithFields(logrus.Fields{
 				"builder_id": m.cfg.id,
 				"err":        err,
@@ -907,7 +954,12 @@ func (m *MockBuilder) HandleGetExecutionPayloadHeader(
 			return
 		}
 	}
-	builderBid.SetValue(bValue)
+	if bValue.Cmp(m.cfg.minimumValue) < 0 {
+		// Always set at least the minimum value
+		builderBid.SetValue(m.cfg.minimumValue)
+	} else {
+		builderBid.SetValue(bValue)
+	}
 	builderBid.SetPubKey(m.pkBeacon)
 
 	// Get proposer index to add it to the context
@@ -925,7 +977,7 @@ func (m *MockBuilder) HandleGetExecutionPayloadHeader(
 		)
 		return
 	}
-	builderBid.SetContext(state.LatestBlockHeader().BodyRoot, slot, proposerIndex)
+	builderBid.SetContext(blockHead.Root(), slot, proposerIndex)
 
 	logrus.WithFields(logrus.Fields{
 		"builder_id": m.cfg.id,
@@ -976,11 +1028,11 @@ func (m *MockBuilder) HandleGetExecutionPayloadHeader(
 		"bid":        versionedSignedBid,
 	}).Info("Built bid to CL")
 
-	if err := serveJSON(w, versionedSignedBid); err != nil {
+	if err = serveJSON(w, versionedSignedBid); err != nil {
 		logrus.WithFields(logrus.Fields{
 			"builder_id": m.cfg.id,
 			"err":        err,
-		}).Error("Error versioning bid from execution data")
+		}).Error("Error writing JSON response to CL")
 		http.Error(
 			w,
 			"Unable to respond to header request",
@@ -998,6 +1050,7 @@ func (m *MockBuilder) HandleGetExecutionPayloadHeader(
 		m.modifiedPayloads[slot] = builderBid.FullPayload()
 		m.modifiedPayloadsMutex.Unlock()
 	}
+	logrus.Debug("Finished serving header request")
 }
 
 type SlotEnvelope struct {
@@ -1527,11 +1580,19 @@ func serveJSON(w http.ResponseWriter, value interface{}) error {
 		return err
 	}
 	logrus.Debug(string(resp))
-	w.Header().Set("content-type", "application/json")
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_, err = w.Write(resp)
+	n, err := w.Write(resp)
 	if err != nil {
 		panic(err)
+	}
+	logrus.Debugf("Wrote %d bytes on response", n)
+	if logrus.GetLevel() >= logrus.DebugLevel {
+		fields := logrus.Fields{}
+		for k, v := range w.Header() {
+			fields[k] = v
+		}
+		logrus.WithFields(fields).Debug("Response headers")
 	}
 	return nil
 }
