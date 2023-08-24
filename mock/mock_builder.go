@@ -1026,7 +1026,7 @@ func (m *MockBuilder) HandleGetExecutionPayloadHeader(
 		"builder_id": m.cfg.id,
 		"fork":       fork,
 		"bid":        versionedSignedBid,
-	}).Info("Built bid to CL")
+	}).Info("Built blinded bid to CL")
 
 	if err = serveJSON(w, versionedSignedBid); err != nil {
 		logrus.WithFields(logrus.Fields{
@@ -1202,7 +1202,7 @@ func (m *MockBuilder) HandleSubmitBlindedBlock(
 	logrus.WithFields(logrus.Fields{
 		"builder_id": m.cfg.id,
 		"payload":    builtBid.FullPayload().GetBlockHash().String(),
-	}).Info("Built payload sent to CL")
+	}).Info("Unblinded payload sent to CL")
 
 	// Check if we are supposed to simulate an error
 	m.cfg.mutex.Lock()
