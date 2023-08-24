@@ -80,6 +80,7 @@ func main() {
 		invPayload               string
 		invPayloadAttr           string
 		extraDataWatermark       string
+		logLevel                 string
 		elRPCPort                int
 		clientInitTimeoutSeconds int
 		ttd                      int
@@ -173,6 +174,12 @@ func main() {
 		200,
 		"Delay in milliseconds to wait before requesting a payload from the execution client",
 	)
+	flag.StringVar(
+		&logLevel,
+		"log-level",
+		"info",
+		"Sets the log level (trace, debug, info, warn, error, fatal, panic)",
+	)
 
 	err := flag.CommandLine.Parse(os.Args[1:])
 	if err != nil {
@@ -180,7 +187,7 @@ func main() {
 	}
 
 	logrus.SetFormatter(&logrus.TextFormatter{
-		FullTimestamp: true,
+		FullTimestamp:   true,
 		TimestampFormat: time.RFC3339Nano,
 	})
 
@@ -203,6 +210,11 @@ func main() {
 			err,
 		)
 	}
+	logLevelParsed, err := logrus.ParseLevel(logLevel)
+	if err != nil {
+		fatalf("error parsing log level: %v\n", err)
+	}
+	logrus.SetLevel(logLevelParsed)
 
 	beaconCfg := beacon_client.BeaconClientConfig{}
 	if clPort := externalCl.GetPort(); clPort != nil {
