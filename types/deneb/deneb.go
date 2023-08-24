@@ -185,7 +185,10 @@ func (b *BuilderBid) Build(
 	}
 
 	b.Payload = new(ExecutionPayload)
-	b.Payload.FromExecutableData(ed)
+	err := b.Payload.FromExecutableData(ed)
+	if err != nil {
+		return err
+	}
 
 	b.Header = b.Payload.Header(spec)
 
