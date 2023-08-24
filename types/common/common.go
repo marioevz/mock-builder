@@ -87,7 +87,7 @@ type BlindedBlobsBundle interface {
 }
 
 type BlobsBundle interface {
-	FromAPI(*api.BlobsBundleV1) error
+	FromAPI(*beacon.Spec, *api.BlobsBundleV1) error
 	GetCommitments() *beacon.KZGCommitments
 	GetProofs() *beacon.KZGProofs
 	GetBlobs() *deneb.Blobs

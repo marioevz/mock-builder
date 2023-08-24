@@ -128,7 +128,7 @@ type BlobsBundle struct {
 	*deneb.BlobsBundle
 }
 
-func (bb *BlobsBundle) FromAPI(blobsBundle *api.BlobsBundleV1) error {
+func (bb *BlobsBundle) FromAPI(spec *beacon.Spec, blobsBundle *api.BlobsBundleV1) error {
 	if blobsBundle == nil {
 		return fmt.Errorf("nil blobs bundle")
 	}
@@ -142,6 +142,7 @@ func (bb *BlobsBundle) FromAPI(blobsBundle *api.BlobsBundleV1) error {
 	for i, blob := range blobsBundle.Blobs {
 		copy(bb.KZGCommitments[i][:], blobsBundle.Commitments[i][:])
 		copy(bb.KZGProofs[i][:], blobsBundle.Proofs[i][:])
+		bb.Blobs[i] = make(deneb.Blob, deneb.BlobSize(spec))
 		copy(bb.Blobs[i][:], blob[:])
 	}
 
@@ -197,11 +198,11 @@ func (b *BuilderBid) Build(
 	}
 
 	b.BlobsBundle = new(BlobsBundle)
-	if err := b.BlobsBundle.FromAPI(bb); err != nil {
+	if err := b.BlobsBundle.FromAPI(spec, bb); err != nil {
 		return err
 	}
 
-	b.BlindedBlobsBundle = b.BlobsBundle.BlobsBundle.Blinded(spec, tree.GetHashFn())
+	b.BlindedBlobsBundle = b.BlobsBundle.Blinded(spec, tree.GetHashFn())
 
 	return nil
 }
