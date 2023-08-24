@@ -39,6 +39,8 @@ type config struct {
 
 	getPayloadDelayMs int
 
+	minimumValue *big.Int
+
 	builderBidVersionResolver GetBuilderBidVersion
 
 	mutex sync.Mutex

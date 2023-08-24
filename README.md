@@ -23,6 +23,10 @@ cd mock-builder
 go build .
 ```
 
+## Default config
+
+The default secret key of the mock builder is `0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f`, which always yields the public key `0x95fde78acd5f6886ddaf5d0056610167c513d09c1c0efabbc7cdcc69beea113779c4a81e2d24daafc5387dbf6ac5fe48`.
+
 ## Mock Payload Building
 The builder can inject modifications into the built payloads at predefined slots by using configurable callbacks:
 - Before sending the ForkchoiceUpdated directive to the execution client, by modifying the payload attributes, using `WithPayloadAttributesModifier` option
