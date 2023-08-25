@@ -18,7 +18,7 @@ const Version = "capella"
 
 type SignedBeaconResponse capella.SignedBlindedBeaconBlock
 
-var __ = common.SignedBeaconResponse((*SignedBeaconResponse)(nil))
+var _ = common.SignedBeaconResponse((*SignedBeaconResponse)(nil))
 
 func (s *SignedBeaconResponse) ExecutionPayloadHash() el_common.Hash {
 	var hash el_common.Hash

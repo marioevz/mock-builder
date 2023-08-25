@@ -627,6 +627,19 @@ func (m *MockBuilder) HandleGetExecutionPayloadHeader(
 		// Withdrawals
 		if withdrawalsRequired && withdrawals == nil {
 			withdrawals, err = state.NextWithdrawals(slot)
+			if err != nil {
+				logrus.WithFields(logrus.Fields{
+					"builder_id": m.cfg.id,
+					"slot":       slot,
+					"err":        err,
+				}).Error("Error getting next withdrawals from state")
+				http.Error(
+					w,
+					"Unable to respond to header request",
+					http.StatusInternalServerError,
+				)
+				return
+			}
 		}
 	}
 
