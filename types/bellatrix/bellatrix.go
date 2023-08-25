@@ -14,100 +14,122 @@ import (
 	"github.com/protolambda/ztyp/view"
 )
 
-type SignedBeaconBlock bellatrix.SignedBeaconBlock
+const Version = "bellatrix"
 
-func (s *SignedBeaconBlock) ExecutionPayloadHash() el_common.Hash {
+type SignedBeaconResponse bellatrix.SignedBlindedBeaconBlock
+
+var _ = common.SignedBeaconResponse((*SignedBeaconResponse)(nil))
+
+func (s *SignedBeaconResponse) ExecutionPayloadHash() el_common.Hash {
 	var hash el_common.Hash
-	copy(hash[:], s.Message.Body.ExecutionPayload.BlockHash[:])
+	copy(hash[:], s.Message.Body.ExecutionPayloadHeader.BlockHash[:])
 	return hash
 }
 
-func (s *SignedBeaconBlock) Root(spec *beacon.Spec) tree.Root {
+func (s *SignedBeaconResponse) Root(spec *beacon.Spec) tree.Root {
 	return s.Message.HashTreeRoot(spec, tree.GetHashFn())
 }
 
-func (s *SignedBeaconBlock) StateRoot() tree.Root {
+func (s *SignedBeaconResponse) StateRoot() tree.Root {
 	return s.Message.StateRoot
 }
 
-func (s *SignedBeaconBlock) Slot() beacon.Slot {
+func (s *SignedBeaconResponse) Slot() beacon.Slot {
 	return s.Message.Slot
 }
 
-func (s *SignedBeaconBlock) ProposerIndex() beacon.ValidatorIndex {
+func (s *SignedBeaconResponse) ProposerIndex() beacon.ValidatorIndex {
 	return s.Message.ProposerIndex
 }
 
-func (s *SignedBeaconBlock) BlockSignature() *beacon.BLSSignature {
+func (s *SignedBeaconResponse) BlockSignature() *beacon.BLSSignature {
 	return &s.Signature
 }
 
-func (s *SignedBeaconBlock) SetExecutionPayload(
-	ep common.ExecutionPayload,
-) error {
-	s.Message.Body.ExecutionPayload.ParentHash = ep.GetParentHash()
-	s.Message.Body.ExecutionPayload.FeeRecipient = ep.GetFeeRecipient()
-	s.Message.Body.ExecutionPayload.StateRoot = ep.GetStateRoot()
-	s.Message.Body.ExecutionPayload.ReceiptsRoot = ep.GetReceiptsRoot()
-	s.Message.Body.ExecutionPayload.LogsBloom = ep.GetLogsBloom()
-	s.Message.Body.ExecutionPayload.PrevRandao = ep.GetPrevRandao()
-	s.Message.Body.ExecutionPayload.BlockNumber = ep.GetBlockNumber()
-	s.Message.Body.ExecutionPayload.GasLimit = ep.GetGasLimit()
-	s.Message.Body.ExecutionPayload.GasUsed = ep.GetGasUsed()
-	s.Message.Body.ExecutionPayload.Timestamp = ep.GetTimestamp()
-	s.Message.Body.ExecutionPayload.ExtraData = ep.GetExtraData()
-	s.Message.Body.ExecutionPayload.BaseFeePerGas = ep.GetBaseFeePerGas()
-	s.Message.Body.ExecutionPayload.BlockHash = ep.GetBlockHash()
-	s.Message.Body.ExecutionPayload.Transactions = ep.GetTransactions()
-	return nil
+type BuilderBid struct {
+	Payload                  *ExecutionPayload                 `json:"-" yaml:"-"`
+	Header                   *bellatrix.ExecutionPayloadHeader `json:"header" yaml:"header"`
+	Value                    view.Uint256View                  `json:"value"  yaml:"value"`
+	PubKey                   beacon.BLSPubkey                  `json:"pubkey" yaml:"pubkey"`
+	common.BuilderBidContext `json:"-" yaml:"-"`
 }
 
-type BuilderBid struct {
-	Header bellatrix.ExecutionPayloadHeader `json:"header" yaml:"header"`
-	Value  view.Uint256View                 `json:"value"  yaml:"value"`
-	PubKey beacon.BLSPubkey                 `json:"pubkey" yaml:"pubkey"`
+var _ common.BuilderBid = (*BuilderBid)(nil)
+
+func (b *BuilderBid) Version() string {
+	return Version
 }
 
 func (b *BuilderBid) HashTreeRoot(hFn tree.HashFn) tree.Root {
 	return hFn.HashTreeRoot(
-		&b.Header,
+		b.Header,
 		&b.Value,
 		&b.PubKey,
 	)
 }
 
-func (b *BuilderBid) FromExecutableData(
+func (b *BuilderBid) Build(
 	spec *beacon.Spec,
 	ed *api.ExecutableData,
+	_ *api.BlobsBundleV1,
 ) error {
 	if ed == nil {
 		return fmt.Errorf("nil execution payload")
 	}
-	copy(b.Header.ParentHash[:], ed.ParentHash[:])
-	copy(b.Header.FeeRecipient[:], ed.FeeRecipient[:])
-	copy(b.Header.StateRoot[:], ed.StateRoot[:])
-	copy(b.Header.ReceiptsRoot[:], ed.ReceiptsRoot[:])
-	copy(b.Header.LogsBloom[:], ed.LogsBloom[:])
-	copy(b.Header.PrevRandao[:], ed.Random[:])
-
-	b.Header.BlockNumber = view.Uint64View(ed.Number)
-	b.Header.GasLimit = view.Uint64View(ed.GasLimit)
-	b.Header.GasUsed = view.Uint64View(ed.GasUsed)
-	b.Header.Timestamp = beacon.Timestamp(ed.Timestamp)
-
-	b.Header.ExtraData = make(beacon.ExtraData, len(ed.ExtraData))
-	copy(b.Header.ExtraData[:], ed.ExtraData[:])
-	b.Header.BaseFeePerGas.SetFromBig(ed.BaseFeePerGas)
-	copy(b.Header.BlockHash[:], ed.BlockHash[:])
-
-	txs := make(beacon.PayloadTransactions, len(ed.Transactions))
-	for i, tx := range ed.Transactions {
-		txs[i] = make(beacon.Transaction, len(tx))
-		copy(txs[i][:], tx[:])
+	b.Payload = new(ExecutionPayload)
+	if err := b.Payload.FromExecutableData(ed); err != nil {
+		return err
 	}
-	txRoot := txs.HashTreeRoot(spec, tree.GetHashFn())
-	copy(b.Header.TransactionsRoot[:], txRoot[:])
 
+	b.Header = b.Payload.Header(spec)
+
+	return nil
+}
+
+func (b *BuilderBid) ValidateReveal(publicKey *blsu.Pubkey, signedBeaconResponse common.SignedBeaconResponse, spec *beacon.Spec, slot beacon.Slot, genesisValidatorsRoot *tree.Root) (*common.UnblindedResponse, error) {
+
+	sbb, ok := signedBeaconResponse.(*SignedBeaconResponse)
+	if !ok {
+		return nil, fmt.Errorf("invalid signed beacon response")
+	}
+
+	// Unblind and compare roots
+	root := sbb.Root(spec)
+	beaconBlock, err := sbb.Message.Unblind(spec, b.Payload.ExecutionPayload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unblind block: %v", err)
+	}
+	if beaconBlock.HashTreeRoot(spec, tree.GetHashFn()) != root {
+		return nil, fmt.Errorf("unblinded block root does not match")
+	}
+
+	s, err := sbb.Signature.Signature()
+	if err != nil {
+		return nil, fmt.Errorf("unable to validate signature: %v", err)
+	}
+
+	dom := beacon.ComputeDomain(beacon.DOMAIN_BEACON_PROPOSER, spec.ForkVersion(slot), *genesisValidatorsRoot)
+	signingRoot := beacon.ComputeSigningRoot(root, dom)
+	if !blsu.Verify(publicKey, signingRoot[:], s) {
+		return nil, fmt.Errorf("invalid signature")
+	}
+
+	return &common.UnblindedResponse{
+		Version: Version,
+		Data:    b.Payload,
+	}, nil
+}
+
+func (sbb *SignedBeaconResponse) Validate(pk *blsu.Pubkey, spec *beacon.Spec, slot beacon.Slot, genesisValidatorsRoot *tree.Root, ep common.ExecutionPayload, bb common.BlobsBundle) error {
+
+	return nil
+}
+
+func (b *BuilderBid) FullPayload() common.ExecutionPayload {
+	return b.Payload
+}
+
+func (b *BuilderBid) FullBlobsBundle() common.BlobsBundle {
 	return nil
 }
 
@@ -119,7 +141,14 @@ func (b *BuilderBid) SetPubKey(pk beacon.BLSPubkey) {
 	b.PubKey = pk
 }
 
+func (b *BuilderBid) SetContext(parentBlockRoot tree.Root, slot beacon.Slot, proposerIndex beacon.ValidatorIndex) {
+	b.ParentBlockRoot = parentBlockRoot
+	b.Slot = slot
+	b.ProposerIndex = proposerIndex
+}
+
 func (b *BuilderBid) Sign(
+	spec *beacon.Spec,
 	domain beacon.BLSDomain,
 	sk *blsu.SecretKey,
 	pk *blsu.Pubkey,
@@ -136,7 +165,9 @@ func (b *BuilderBid) Sign(
 	}, nil
 }
 
-type ExecutionPayload bellatrix.ExecutionPayload
+type ExecutionPayload struct {
+	*bellatrix.ExecutionPayload
+}
 
 func (p *ExecutionPayload) FromExecutableData(ed *api.ExecutableData) error {
 	if ed == nil {
@@ -145,6 +176,7 @@ func (p *ExecutionPayload) FromExecutableData(ed *api.ExecutableData) error {
 	if ed.Withdrawals != nil {
 		return fmt.Errorf("execution data contains withdrawals")
 	}
+	p.ExecutionPayload = &bellatrix.ExecutionPayload{}
 	copy(p.ParentHash[:], ed.ParentHash[:])
 	copy(p.FeeRecipient[:], ed.FeeRecipient[:])
 	copy(p.StateRoot[:], ed.StateRoot[:])
@@ -169,58 +201,11 @@ func (p *ExecutionPayload) FromExecutableData(ed *api.ExecutableData) error {
 	return nil
 }
 
-func (p *ExecutionPayload) GetParentHash() beacon.Hash32 {
-	return p.ParentHash
-}
-
-func (p *ExecutionPayload) GetFeeRecipient() beacon.Eth1Address {
-	return p.FeeRecipient
-}
-
-func (p *ExecutionPayload) GetStateRoot() beacon.Bytes32 {
-	return p.StateRoot
-}
-
-func (p *ExecutionPayload) GetReceiptsRoot() beacon.Bytes32 {
-	return p.ReceiptsRoot
-}
-
-func (p *ExecutionPayload) GetLogsBloom() beacon.LogsBloom {
-	return p.LogsBloom
-}
-
-func (p *ExecutionPayload) GetPrevRandao() beacon.Bytes32 {
-	return p.PrevRandao
-}
-
-func (p *ExecutionPayload) GetBlockNumber() view.Uint64View {
-	return p.BlockNumber
-}
-
-func (p *ExecutionPayload) GetGasLimit() view.Uint64View {
-	return p.GasLimit
-}
-
-func (p *ExecutionPayload) GetGasUsed() view.Uint64View {
-	return p.GasUsed
-}
-
-func (p *ExecutionPayload) GetTimestamp() beacon.Timestamp {
-	return p.Timestamp
-}
-
-func (p *ExecutionPayload) GetExtraData() beacon.ExtraData {
-	return p.ExtraData
-}
-
-func (p *ExecutionPayload) GetBaseFeePerGas() view.Uint256View {
-	return p.BaseFeePerGas
-}
-
-func (p *ExecutionPayload) GetBlockHash() beacon.Hash32 {
+func (p *ExecutionPayload) GetBlockHash() tree.Root {
+	if p == nil {
+		panic("nil execution payload")
+	}
 	return p.BlockHash
 }
 
-func (p *ExecutionPayload) GetTransactions() beacon.PayloadTransactions {
-	return p.Transactions
-}
+var _ common.ExecutionPayload = (*ExecutionPayload)(nil)

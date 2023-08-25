@@ -11,7 +11,7 @@ type Builder interface {
 	Cancel() error
 	GetBuiltPayloadsCount() int
 	GetSignedBeaconBlockCount() int
-	GetSignedBeaconBlocks() map[beacon.Slot]common.SignedBeaconBlock
+	GetSignedBeaconBlocks() map[beacon.Slot]common.SignedBeaconResponse
 	GetModifiedPayloads() map[beacon.Slot]*api.ExecutableData
 	GetBuiltPayloads() map[beacon.Slot]*api.ExecutableData
 }

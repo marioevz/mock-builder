@@ -8,6 +8,7 @@ import (
 	blsu "github.com/protolambda/bls12-381-util"
 	"github.com/protolambda/zrnt/eth2/beacon/common"
 	beacon "github.com/protolambda/zrnt/eth2/beacon/common"
+	"github.com/protolambda/zrnt/eth2/beacon/deneb"
 	"github.com/protolambda/ztyp/tree"
 	"github.com/protolambda/ztyp/view"
 )
@@ -33,13 +34,24 @@ type SignedValidatorRegistrationV1 struct {
 	Signature common.BLSSignature     `json:"signature" yaml:"signature"`
 }
 
+type BuilderBidContext struct {
+	ParentBlockRoot tree.Root
+	Slot            beacon.Slot
+	ProposerIndex   beacon.ValidatorIndex
+}
+
 type BuilderBid interface {
-	FromExecutableData(*beacon.Spec, *api.ExecutableData) error
+	Build(*beacon.Spec, *api.ExecutableData, *api.BlobsBundleV1) error
+	FullPayload() ExecutionPayload
+	FullBlobsBundle() BlobsBundle
 	SetValue(*big.Int)
 	SetPubKey(beacon.BLSPubkey)
-	Sign(domain beacon.BLSDomain,
+	SetContext(parentBlockRoot tree.Root, slot beacon.Slot, proposerIndex beacon.ValidatorIndex)
+	Sign(spec *beacon.Spec, domain beacon.BLSDomain,
 		sk *blsu.SecretKey,
 		pk *blsu.Pubkey) (*SignedBuilderBid, error)
+	ValidateReveal(publicKey *blsu.Pubkey, signedBeaconResponse SignedBeaconResponse, spec *beacon.Spec, slot beacon.Slot, genesisValidatorsRoot *tree.Root) (*UnblindedResponse, error)
+	Version() string
 }
 
 type SignedBuilderBid struct {
@@ -47,11 +59,9 @@ type SignedBuilderBid struct {
 	Signature common.BLSSignature `json:"signature" yaml:"signature"`
 }
 
-func (s *SignedBuilderBid) Versioned(
-	version string,
-) *VersionedSignedBuilderBid {
+func (s *SignedBuilderBid) Versioned() *VersionedSignedBuilderBid {
 	return &VersionedSignedBuilderBid{
-		Version: version,
+		Version: s.Message.Version(),
 		Data:    s,
 	}
 }
@@ -61,40 +71,34 @@ type VersionedSignedBuilderBid struct {
 	Data    *SignedBuilderBid `json:"data"    yaml:"data"`
 }
 
-type SignedBeaconBlock interface {
+type SignedBeaconResponse interface {
 	ExecutionPayloadHash() el_common.Hash
 	Root(*beacon.Spec) tree.Root
 	StateRoot() tree.Root
-	SetExecutionPayload(ExecutionPayload) error
 	Slot() beacon.Slot
 	ProposerIndex() beacon.ValidatorIndex
 	BlockSignature() *common.BLSSignature
 }
 
+type BlindedBlobsBundle interface {
+	GetCommitments() *beacon.KZGCommitments
+	GetProofs() *beacon.KZGProofs
+	GetBlobRoots() *deneb.BlobRoots
+}
+
+type BlobsBundle interface {
+	FromAPI(*beacon.Spec, *api.BlobsBundleV1) error
+	GetCommitments() *beacon.KZGCommitments
+	GetProofs() *beacon.KZGProofs
+	GetBlobs() *deneb.Blobs
+}
+
 type ExecutionPayload interface {
 	FromExecutableData(*api.ExecutableData) error
-	GetParentHash() beacon.Hash32
-	GetFeeRecipient() beacon.Eth1Address
-	GetStateRoot() beacon.Bytes32
-	GetReceiptsRoot() beacon.Bytes32
-	GetLogsBloom() beacon.LogsBloom
-	GetPrevRandao() beacon.Bytes32
-	GetBlockNumber() view.Uint64View
-	GetGasLimit() view.Uint64View
-	GetGasUsed() view.Uint64View
-	GetTimestamp() beacon.Timestamp
-	GetExtraData() beacon.ExtraData
-	GetBaseFeePerGas() view.Uint256View
-	GetBlockHash() beacon.Hash32
-	GetTransactions() beacon.PayloadTransactions
+	GetBlockHash() tree.Root
 }
 
-type ExecutionPayloadWithdrawals interface {
-	ExecutionPayload
-	GetWithdrawals() beacon.Withdrawals
-}
-
-type ExecutionPayloadResponse struct {
-	Version string           `json:"version" yaml:"version"`
-	Data    ExecutionPayload `json:"data"    yaml:"data"`
+type UnblindedResponse struct {
+	Version string      `json:"version" yaml:"version"`
+	Data    interface{} `json:"data"    yaml:"data"`
 }

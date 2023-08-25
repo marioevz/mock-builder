@@ -80,11 +80,13 @@ func main() {
 		invPayload               string
 		invPayloadAttr           string
 		extraDataWatermark       string
+		logLevel                 string
 		elRPCPort                int
 		clientInitTimeoutSeconds int
 		ttd                      int
 		port                     int
 		bidmult                  int
+		getPayloadMsDelay        int
 		options                  = make([]mock_builder.Option, 0)
 	)
 
@@ -166,11 +168,28 @@ func main() {
 		0,
 		"multiply the bid wei value by this integer",
 	)
+	flag.IntVar(
+		&getPayloadMsDelay,
+		"get-payload-delay-ms",
+		200,
+		"Delay in milliseconds to wait before requesting a payload from the execution client",
+	)
+	flag.StringVar(
+		&logLevel,
+		"log-level",
+		"info",
+		"Sets the log level (trace, debug, info, warn, error, fatal, panic)",
+	)
 
 	err := flag.CommandLine.Parse(os.Args[1:])
 	if err != nil {
 		panic(err)
 	}
+
+	logrus.SetFormatter(&logrus.TextFormatter{
+		FullTimestamp:   true,
+		TimestampFormat: time.RFC3339Nano,
+	})
 
 	if clEndpoint == "" {
 		fatalf("Missing required consensus client endpoint")
@@ -191,6 +210,11 @@ func main() {
 			err,
 		)
 	}
+	logLevelParsed, err := logrus.ParseLevel(logLevel)
+	if err != nil {
+		fatalf("error parsing log level: %v\n", err)
+	}
+	logrus.SetLevel(logLevelParsed)
 
 	beaconCfg := beacon_client.BeaconClientConfig{}
 	if clPort := externalCl.GetPort(); clPort != nil {
@@ -243,6 +267,14 @@ func main() {
 		options = append(
 			options,
 			mock_builder.WithExtraDataWatermark(extraDataWatermark),
+		)
+	}
+	if getPayloadMsDelay > 0 {
+		options = append(
+			options,
+			mock_builder.WithGetPayloadDelay(
+				getPayloadMsDelay,
+			),
 		)
 	}
 
