@@ -72,17 +72,22 @@ func (b *BuilderBid) Build(
 	spec *beacon.Spec,
 	ed *api.ExecutableData,
 	_ *api.BlobsBundleV1,
+	parentBlockRoot tree.Root,
+	slot beacon.Slot,
+	proposerIndex beacon.ValidatorIndex,
 ) error {
 	if ed == nil {
 		return fmt.Errorf("nil execution payload")
 	}
 	b.Payload = new(ExecutionPayload)
-	if err := b.Payload.FromExecutableData(ed); err != nil {
+	if err := b.Payload.FromExecutableData(ed, nil); err != nil {
 		return err
 	}
 
 	b.Header = b.Payload.Header(spec)
-
+	b.ParentBlockRoot = parentBlockRoot
+	b.Slot = slot
+	b.ProposerIndex = proposerIndex
 	return nil
 }
 
@@ -141,12 +146,6 @@ func (b *BuilderBid) SetPubKey(pk beacon.BLSPubkey) {
 	b.PubKey = pk
 }
 
-func (b *BuilderBid) SetContext(parentBlockRoot tree.Root, slot beacon.Slot, proposerIndex beacon.ValidatorIndex) {
-	b.ParentBlockRoot = parentBlockRoot
-	b.Slot = slot
-	b.ProposerIndex = proposerIndex
-}
-
 func (b *BuilderBid) Sign(
 	spec *beacon.Spec,
 	domain beacon.BLSDomain,
@@ -167,9 +166,10 @@ func (b *BuilderBid) Sign(
 
 type ExecutionPayload struct {
 	*bellatrix.ExecutionPayload
+	Source *api.ExecutableData
 }
 
-func (p *ExecutionPayload) FromExecutableData(ed *api.ExecutableData) error {
+func (p *ExecutionPayload) FromExecutableData(ed *api.ExecutableData, _ *tree.Root) error {
 	if ed == nil {
 		return fmt.Errorf("nil execution payload")
 	}
@@ -198,11 +198,19 @@ func (p *ExecutionPayload) FromExecutableData(ed *api.ExecutableData) error {
 		p.Transactions[i] = make(beacon.Transaction, len(tx))
 		copy(p.Transactions[i][:], tx[:])
 	}
+	p.Source = ed
 	return nil
 }
 
+func (p *ExecutionPayload) ToExecutableData() (*api.ExecutableData, *el_common.Hash, error) {
+	if p.Source == nil {
+		return nil, nil, fmt.Errorf("nil execution payload")
+	}
+	return p.Source, nil, nil
+}
+
 func (p *ExecutionPayload) GetBlockHash() tree.Root {
-	if p == nil {
+	if p.ExecutionPayload == nil {
 		panic("nil execution payload")
 	}
 	return p.BlockHash

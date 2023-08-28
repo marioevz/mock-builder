@@ -48,6 +48,9 @@ func TestDenebBidBuilding(t *testing.T) {
 		spec,
 		ed,
 		bb,
+		tree.Root{},
+		0,
+		0,
 	)
 	if err != nil {
 		t.Fatal(err)

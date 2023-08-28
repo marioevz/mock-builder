@@ -938,7 +938,23 @@ func (m *MockBuilder) HandleGetExecutionPayloadHeader(
 		return
 	}
 
-	if err = builderBid.Build(m.cfg.spec, p, apiBlobsBundle); err != nil {
+	// Get proposer index to add it to the context
+	proposerIndex, err := m.cl.ProposerIndex(ctx, slot)
+	if err != nil {
+		logrus.WithFields(logrus.Fields{
+			"builder_id": m.cfg.id,
+			"err":        err,
+			"slot":       slot,
+		}).Error("Error getting proposer index from CL")
+		http.Error(
+			w,
+			"Unable to respond to header request",
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	if err = builderBid.Build(m.cfg.spec, p, apiBlobsBundle, blockHead.Root(), slot, proposerIndex); err != nil {
 		logrus.WithFields(logrus.Fields{
 			"builder_id": m.cfg.id,
 			"err":        err,
@@ -974,23 +990,6 @@ func (m *MockBuilder) HandleGetExecutionPayloadHeader(
 		builderBid.SetValue(bValue)
 	}
 	builderBid.SetPubKey(m.pkBeacon)
-
-	// Get proposer index to add it to the context
-	proposerIndex, err := m.cl.ProposerIndex(ctx, slot)
-	if err != nil {
-		logrus.WithFields(logrus.Fields{
-			"builder_id": m.cfg.id,
-			"err":        err,
-			"slot":       slot,
-		}).Error("Error getting proposer index from CL")
-		http.Error(
-			w,
-			"Unable to respond to header request",
-			http.StatusInternalServerError,
-		)
-		return
-	}
-	builderBid.SetContext(blockHead.Root(), slot, proposerIndex)
 
 	logrus.WithFields(logrus.Fields{
 		"builder_id": m.cfg.id,

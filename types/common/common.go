@@ -41,12 +41,11 @@ type BuilderBidContext struct {
 }
 
 type BuilderBid interface {
-	Build(*beacon.Spec, *api.ExecutableData, *api.BlobsBundleV1) error
+	Build(spec *beacon.Spec, payload *api.ExecutableData, blobsBundle *api.BlobsBundleV1, parentBlockRoot tree.Root, slot beacon.Slot, proposerIndex beacon.ValidatorIndex) error
 	FullPayload() ExecutionPayload
 	FullBlobsBundle() BlobsBundle
 	SetValue(*big.Int)
 	SetPubKey(beacon.BLSPubkey)
-	SetContext(parentBlockRoot tree.Root, slot beacon.Slot, proposerIndex beacon.ValidatorIndex)
 	Sign(spec *beacon.Spec, domain beacon.BLSDomain,
 		sk *blsu.SecretKey,
 		pk *blsu.Pubkey) (*SignedBuilderBid, error)
@@ -88,13 +87,15 @@ type BlindedBlobsBundle interface {
 
 type BlobsBundle interface {
 	FromAPI(*beacon.Spec, *api.BlobsBundleV1) error
+	ToAPI() (*api.BlobsBundleV1, error)
 	GetCommitments() *beacon.KZGCommitments
 	GetProofs() *beacon.KZGProofs
 	GetBlobs() *deneb.Blobs
 }
 
 type ExecutionPayload interface {
-	FromExecutableData(*api.ExecutableData) error
+	FromExecutableData(executableData *api.ExecutableData, beaconRoot *tree.Root) error
+	ToExecutableData() (executableData *api.ExecutableData, beaconRoot *el_common.Hash, err error)
 	GetBlockHash() tree.Root
 }
 
