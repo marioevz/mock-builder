@@ -46,6 +46,7 @@ type BuilderBid interface {
 	FullBlobsBundle() BlobsBundle
 	SetValue(*big.Int)
 	SetPubKey(beacon.BLSPubkey)
+	HashTreeRoot(spec *beacon.Spec, hFn tree.HashFn) tree.Root
 	Sign(spec *beacon.Spec, domain beacon.BLSDomain,
 		sk *blsu.SecretKey,
 		pk *blsu.Pubkey) (*SignedBuilderBid, error)

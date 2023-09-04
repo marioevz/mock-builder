@@ -60,7 +60,7 @@ func (b *BuilderBid) Version() string {
 	return Version
 }
 
-func (b *BuilderBid) HashTreeRoot(hFn tree.HashFn) tree.Root {
+func (b *BuilderBid) HashTreeRoot(spec *beacon.Spec, hFn tree.HashFn) tree.Root {
 	return hFn.HashTreeRoot(
 		b.Header,
 		&b.Value,
@@ -91,7 +91,13 @@ func (b *BuilderBid) Build(
 	return nil
 }
 
-func (b *BuilderBid) ValidateReveal(publicKey *blsu.Pubkey, signedBeaconResponse common.SignedBeaconResponse, spec *beacon.Spec, slot beacon.Slot, genesisValidatorsRoot *tree.Root) (*common.UnblindedResponse, error) {
+func (b *BuilderBid) ValidateReveal(
+	publicKey *blsu.Pubkey,
+	signedBeaconResponse common.SignedBeaconResponse,
+	spec *beacon.Spec,
+	slot beacon.Slot,
+	genesisValidatorsRoot *tree.Root,
+) (*common.UnblindedResponse, error) {
 	sbb, ok := signedBeaconResponse.(*SignedBeaconResponse)
 	if !ok {
 		return nil, fmt.Errorf("invalid signed beacon response")
@@ -149,7 +155,7 @@ func (b *BuilderBid) Sign(
 	pkBytes := pk.Serialize()
 	copy(b.PubKey[:], pkBytes[:])
 	sigRoot := beacon.ComputeSigningRoot(
-		b.HashTreeRoot(tree.GetHashFn()),
+		b.HashTreeRoot(spec, tree.GetHashFn()),
 		domain,
 	)
 	return &common.SignedBuilderBid{

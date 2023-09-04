@@ -21,6 +21,7 @@ import (
 	"github.com/gorilla/mux"
 	beacon_client "github.com/marioevz/eth-clients/clients/beacon"
 	exec_client "github.com/marioevz/eth-clients/clients/execution"
+	builder_types "github.com/marioevz/mock-builder/types"
 	"github.com/marioevz/mock-builder/types/bellatrix"
 	"github.com/marioevz/mock-builder/types/capella"
 	"github.com/marioevz/mock-builder/types/common"
@@ -69,6 +70,8 @@ type MockBuilder struct {
 	// Configuration object
 	cfg *config
 }
+
+var _ builder_types.Builder = (*MockBuilder)(nil)
 
 const (
 	DEFAULT_BUILDER_HOST = "0.0.0.0"
@@ -269,9 +272,13 @@ func (m *MockBuilder) Start(ctx context.Context) error {
 
 	if addr, err := m.el.EngineRPCAddress(); err == nil {
 		el_address = addr
+	} else {
+		logrus.Error(err)
 	}
 	if addr, err := m.cl.BeaconAPIURL(); err == nil {
 		cl_address = addr
+	} else {
+		logrus.Error(err)
 	}
 	fields := logrus.Fields{
 		"builder_id":           m.cfg.id,
@@ -997,6 +1004,14 @@ func (m *MockBuilder) HandleGetExecutionPayloadHeader(
 		"value":      bValue.String(),
 		"fork":       fork,
 	}).Info("Built payload from EL")
+
+	builtBidRoot := builderBid.HashTreeRoot(m.cfg.spec, tree.GetHashFn())
+	bidJson, _ := json.Marshal(builderBid)
+	logrus.WithFields(logrus.Fields{
+		"builder_id": m.cfg.id,
+		"bid_root":   builtBidRoot,
+		"json":       string(bidJson),
+	}).Debug("Built bid details")
 
 	signedBid, err := builderBid.Sign(m.cfg.spec, m.builderApiDomain, m.sk, m.pk)
 	if err != nil {

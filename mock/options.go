@@ -14,6 +14,7 @@ import (
 	"github.com/marioevz/mock-builder/types/capella"
 	"github.com/marioevz/mock-builder/types/common"
 	beacon "github.com/protolambda/zrnt/eth2/beacon/common"
+	"github.com/sirupsen/logrus"
 )
 
 type PayloadAttributesModifier func(*api.PayloadAttributes, beacon.Slot) (bool, error)
@@ -111,6 +112,20 @@ func WithExternalIP(ip net.IP) Option {
 			return nil
 		},
 		description: fmt.Sprintf("WithExternalIP(%s)", ip),
+	}
+}
+
+func WithLogLevel(logLevel string) Option {
+	return Option{
+		apply: func(m *MockBuilder) error {
+			logLevelParsed, err := logrus.ParseLevel(logLevel)
+			if err != nil {
+				return err
+			}
+			logrus.SetLevel(logLevelParsed)
+			return nil
+		},
+		description: fmt.Sprintf("WithLogLevel(%s)", logLevel),
 	}
 }
 
