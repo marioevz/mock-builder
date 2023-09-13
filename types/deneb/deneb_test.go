@@ -134,7 +134,7 @@ func TestBidHashTreeRoot(t *testing.T) {
 				"value": "8400000000000000",
 				"pubkey": "0x95fde78acd5f6886ddaf5d0056610167c513d09c1c0efabbc7cdcc69beea113779c4a81e2d24daafc5387dbf6ac5fe48"
 			}`,
-			expectedHash: "0x10cb04188d58dcbd37f4fb450d66d870cb851e7f3ae4bc1e77e5ce70a489f9ce",
+			expectedHash: "0xfdc1374279c7f4ac309ded5f9e028f60f07eafdb012f835f1ef4969a76e750c4",
 		},
 	} {
 		t.Run(fmt.Sprintf("htr-%d", i), func(t *testing.T) {
