@@ -102,8 +102,8 @@ func TestDenebBidBuilding(t *testing.T) {
 
 func TestBidHashTreeRoot(t *testing.T) {
 	for i, tc := range []struct {
-		jsonBid      string
-		expectedHash string
+		jsonBid     string
+		expectedHTR string
 	}{
 		{
 			jsonBid: `{
@@ -134,7 +134,7 @@ func TestBidHashTreeRoot(t *testing.T) {
 				"value": "8400000000000000",
 				"pubkey": "0x95fde78acd5f6886ddaf5d0056610167c513d09c1c0efabbc7cdcc69beea113779c4a81e2d24daafc5387dbf6ac5fe48"
 			}`,
-			expectedHash: "0xfdc1374279c7f4ac309ded5f9e028f60f07eafdb012f835f1ef4969a76e750c4",
+			expectedHTR: "0xed095772eca7c6c826a33e9945380a749b2d88f347f018ed46d97582c5f9a955",
 		},
 	} {
 		t.Run(fmt.Sprintf("htr-%d", i), func(t *testing.T) {
@@ -144,9 +144,9 @@ func TestBidHashTreeRoot(t *testing.T) {
 				t.Errorf("failed to unmarshal json: %v", err)
 			}
 			bidHash := builderBid.HashTreeRoot(configs.Mainnet, tree.GetHashFn())
-			expectedHash := el_common.HexToHash(tc.expectedHash)
-			if !bytes.Equal(bidHash[:], expectedHash[:]) {
-				t.Errorf("expected hash %s, got %s", expectedHash, bidHash)
+			expectedHTR := el_common.HexToHash(tc.expectedHTR)
+			if !bytes.Equal(bidHash[:], expectedHTR[:]) {
+				t.Errorf("expected hash %s, got %s", expectedHTR, bidHash)
 			}
 		})
 	}

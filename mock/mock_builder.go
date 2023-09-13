@@ -1088,6 +1088,10 @@ type MessageSlotEnvelope struct {
 	SlotEnvelope SlotEnvelope `json:"message" yaml:"message"`
 }
 
+type DenebMessageSlotEnvelope struct {
+	MessageSlotEnvelope MessageSlotEnvelope `json:"signed_blinded_block" yaml:"signed_blinded_block"`
+}
+
 func (m *MockBuilder) HandleSubmitBlindedBlock(
 	w http.ResponseWriter, req *http.Request,
 ) {
@@ -1106,29 +1110,32 @@ func (m *MockBuilder) HandleSubmitBlindedBlock(
 		return
 	}
 
+
 	// First try to find out the slot to get the version of the block
-	var messageSlotEnvelope MessageSlotEnvelope
-	if err := json.Unmarshal(requestBytes, &messageSlotEnvelope); err != nil {
-		logrus.WithFields(logrus.Fields{
-			"builder_id": m.cfg.id,
-			"err":        err,
-		}).Error("Unable to parse request body")
-		http.Error(w, "Unable to parse request body", http.StatusBadRequest)
-		return
+	var slot beacon.Slot
+	{
+		var messageSlotEnvelope MessageSlotEnvelope
+		if err := json.Unmarshal(requestBytes, &messageSlotEnvelope); err == nil {
+			slot = messageSlotEnvelope.SlotEnvelope.Slot
+		}
+
+		if slot == 0 {
+			// Try with deneb
+			var denebMessageSlotEnvelope DenebMessageSlotEnvelope
+			if err := json.Unmarshal(requestBytes, &denebMessageSlotEnvelope); err == nil {
+				slot = denebMessageSlotEnvelope.MessageSlotEnvelope.SlotEnvelope.Slot
+			}
+		}
 	}
 
 	var (
 		signedBeaconResponse common.SignedBeaconResponse
 	)
-	if m.cfg.spec.SlotToEpoch(
-		messageSlotEnvelope.SlotEnvelope.Slot,
-	) >= m.cfg.spec.DENEB_FORK_EPOCH {
+	if m.cfg.spec.SlotToEpoch(slot) >= m.cfg.spec.DENEB_FORK_EPOCH {
 		signedBeaconResponse = &deneb.SignedBlindedBlockContents{}
-	} else if m.cfg.spec.SlotToEpoch(
-		messageSlotEnvelope.SlotEnvelope.Slot,
-	) >= m.cfg.spec.CAPELLA_FORK_EPOCH {
+	} else if m.cfg.spec.SlotToEpoch(slot) >= m.cfg.spec.CAPELLA_FORK_EPOCH {
 		signedBeaconResponse = &capella.SignedBeaconResponse{}
-	} else if m.cfg.spec.SlotToEpoch(messageSlotEnvelope.SlotEnvelope.Slot) >= m.cfg.spec.BELLATRIX_FORK_EPOCH {
+	} else if m.cfg.spec.SlotToEpoch(slot) >= m.cfg.spec.BELLATRIX_FORK_EPOCH {
 		signedBeaconResponse = &bellatrix.SignedBeaconResponse{}
 	} else {
 		logrus.WithFields(logrus.Fields{
@@ -1153,11 +1160,11 @@ func (m *MockBuilder) HandleSubmitBlindedBlock(
 	}
 
 	// Look up the payload in the history of bids
-	builtBid, ok := m.builtPayloads[messageSlotEnvelope.SlotEnvelope.Slot]
+	builtBid, ok := m.builtPayloads[slot]
 	if !ok {
 		logrus.WithFields(logrus.Fields{
 			"builder_id": m.cfg.id,
-			"slot":       messageSlotEnvelope.SlotEnvelope.Slot,
+			"slot":       slot,
 		}).Error("Could not find payload in history")
 		http.Error(w, "Unable to get payload", http.StatusInternalServerError)
 		return
@@ -1173,11 +1180,11 @@ func (m *MockBuilder) HandleSubmitBlindedBlock(
 	m.receivedSignedBeaconBlocksMutex.Unlock()
 
 	// Obtain the public key used to validate the signed beacon response
-	pubkey := m.validatorPublicKeys[signedBeaconResponse.Slot()]
-	if pubkey == nil {
+	pubkey, ok := m.validatorPublicKeys[signedBeaconResponse.Slot()]
+	if pubkey == nil || !ok {
 		logrus.WithFields(logrus.Fields{
 			"builder_id": m.cfg.id,
-			"slot":       messageSlotEnvelope.SlotEnvelope.Slot,
+			"slot":       slot,
 		}).Error("Could not find public key in history")
 		http.Error(
 			w,
@@ -1190,7 +1197,7 @@ func (m *MockBuilder) HandleSubmitBlindedBlock(
 	if err != nil {
 		logrus.WithFields(logrus.Fields{
 			"builder_id": m.cfg.id,
-			"slot":       messageSlotEnvelope.SlotEnvelope.Slot,
+			"slot":       slot,
 		}).Error("Could not convert public key")
 		http.Error(
 			w,
@@ -1201,12 +1208,12 @@ func (m *MockBuilder) HandleSubmitBlindedBlock(
 	}
 
 	unblindedResponse, err := builtBid.ValidateReveal(
-		pk, signedBeaconResponse, m.cfg.spec, messageSlotEnvelope.SlotEnvelope.Slot, m.cl.Config.GenesisValidatorsRoot,
+		pk, signedBeaconResponse, m.cfg.spec, slot, m.cl.Config.GenesisValidatorsRoot,
 	)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{
 			"builder_id": m.cfg.id,
-			"slot":       messageSlotEnvelope.SlotEnvelope.Slot,
+			"slot":       slot,
 			"err":        err,
 		}).Error("Error validating signed beacon response")
 		http.Error(
@@ -1236,10 +1243,10 @@ func (m *MockBuilder) HandleSubmitBlindedBlock(
 	errOnPayloadReveal := m.cfg.errorOnPayloadReveal
 	m.cfg.mutex.Unlock()
 	if errOnPayloadReveal != nil {
-		if err := errOnPayloadReveal(messageSlotEnvelope.SlotEnvelope.Slot); err != nil {
+		if err := errOnPayloadReveal(slot); err != nil {
 			logrus.WithFields(logrus.Fields{
 				"builder_id": m.cfg.id,
-				"slot":       messageSlotEnvelope.SlotEnvelope.Slot,
+				"slot":       slot,
 				"err":        err,
 			}).Error("Simulated error")
 			http.Error(
