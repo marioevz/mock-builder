@@ -60,7 +60,7 @@ func (b *BuilderBid) Version() string {
 	return Version
 }
 
-func (b *BuilderBid) HashTreeRoot(hFn tree.HashFn) tree.Root {
+func (b *BuilderBid) HashTreeRoot(spec *beacon.Spec, hFn tree.HashFn) tree.Root {
 	return hFn.HashTreeRoot(
 		b.Header,
 		&b.Value,
@@ -72,20 +72,32 @@ func (b *BuilderBid) Build(
 	spec *beacon.Spec,
 	ed *api.ExecutableData,
 	_ *api.BlobsBundleV1,
+	parentBlockRoot tree.Root,
+	slot beacon.Slot,
+	proposerIndex beacon.ValidatorIndex,
 ) error {
 	if ed == nil {
 		return fmt.Errorf("nil execution payload")
 	}
 	b.Payload = new(ExecutionPayload)
-	if err := b.Payload.FromExecutableData(ed); err != nil {
+	if err := b.Payload.FromExecutableData(ed, nil); err != nil {
 		return err
 	}
 
 	b.Header = b.Payload.Header(spec)
+	b.ParentBlockRoot = parentBlockRoot
+	b.Slot = slot
+	b.ProposerIndex = proposerIndex
 	return nil
 }
 
-func (b *BuilderBid) ValidateReveal(publicKey *blsu.Pubkey, signedBeaconResponse common.SignedBeaconResponse, spec *beacon.Spec, slot beacon.Slot, genesisValidatorsRoot *tree.Root) (*common.UnblindedResponse, error) {
+func (b *BuilderBid) ValidateReveal(
+	publicKey *blsu.Pubkey,
+	signedBeaconResponse common.SignedBeaconResponse,
+	spec *beacon.Spec,
+	slot beacon.Slot,
+	genesisValidatorsRoot *tree.Root,
+) (*common.UnblindedResponse, error) {
 	sbb, ok := signedBeaconResponse.(*SignedBeaconResponse)
 	if !ok {
 		return nil, fmt.Errorf("invalid signed beacon response")
@@ -134,12 +146,6 @@ func (b *BuilderBid) SetPubKey(pk beacon.BLSPubkey) {
 	b.PubKey = pk
 }
 
-func (b *BuilderBid) SetContext(parentBlockRoot tree.Root, slot beacon.Slot, proposerIndex beacon.ValidatorIndex) {
-	b.ParentBlockRoot = parentBlockRoot
-	b.Slot = slot
-	b.ProposerIndex = proposerIndex
-}
-
 func (b *BuilderBid) Sign(
 	spec *beacon.Spec,
 	domain beacon.BLSDomain,
@@ -149,7 +155,7 @@ func (b *BuilderBid) Sign(
 	pkBytes := pk.Serialize()
 	copy(b.PubKey[:], pkBytes[:])
 	sigRoot := beacon.ComputeSigningRoot(
-		b.HashTreeRoot(tree.GetHashFn()),
+		b.HashTreeRoot(spec, tree.GetHashFn()),
 		domain,
 	)
 	return &common.SignedBuilderBid{
@@ -160,9 +166,10 @@ func (b *BuilderBid) Sign(
 
 type ExecutionPayload struct {
 	*capella.ExecutionPayload
+	Source *api.ExecutableData
 }
 
-func (p *ExecutionPayload) FromExecutableData(ed *api.ExecutableData) error {
+func (p *ExecutionPayload) FromExecutableData(ed *api.ExecutableData, _ *tree.Root) error {
 	if ed == nil {
 		return fmt.Errorf("nil execution payload")
 	}
@@ -198,7 +205,15 @@ func (p *ExecutionPayload) FromExecutableData(ed *api.ExecutableData) error {
 		copy(p.Withdrawals[i].Address[:], w.Address[:])
 		p.Withdrawals[i].Amount = beacon.Gwei(w.Amount)
 	}
+	p.Source = ed
 	return nil
+}
+
+func (p *ExecutionPayload) ToExecutableData() (*api.ExecutableData, *el_common.Hash, error) {
+	if p.Source == nil {
+		return nil, nil, fmt.Errorf("nil execution payload")
+	}
+	return p.Source, nil, nil
 }
 
 func (p *ExecutionPayload) GetBlockHash() tree.Root {

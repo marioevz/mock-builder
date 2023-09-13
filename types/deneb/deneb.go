@@ -126,6 +126,7 @@ func (sbb *SignedBlindedBlockContents) Validate(pk *blsu.Pubkey, spec *beacon.Sp
 
 type BlobsBundle struct {
 	*deneb.BlobsBundle
+	Source *api.BlobsBundleV1
 }
 
 func (bb *BlobsBundle) FromAPI(spec *beacon.Spec, blobsBundle *api.BlobsBundleV1) error {
@@ -146,7 +147,16 @@ func (bb *BlobsBundle) FromAPI(spec *beacon.Spec, blobsBundle *api.BlobsBundleV1
 		copy(bb.Blobs[i][:], blob[:])
 	}
 
+	bb.Source = blobsBundle
+
 	return nil
+}
+
+func (bb *BlobsBundle) ToAPI() (*api.BlobsBundleV1, error) {
+	if bb.Source == nil {
+		return nil, fmt.Errorf("nil blobs bundle")
+	}
+	return bb.Source, nil
 }
 
 var _ common.BlobsBundle = (*BlobsBundle)(nil)
@@ -180,13 +190,16 @@ func (b *BuilderBid) Build(
 	spec *beacon.Spec,
 	ed *api.ExecutableData,
 	bb *api.BlobsBundleV1,
+	parentBlockRoot tree.Root,
+	slot beacon.Slot,
+	proposerIndex beacon.ValidatorIndex,
 ) error {
 	if ed == nil {
 		return fmt.Errorf("nil execution payload")
 	}
 
 	b.Payload = new(ExecutionPayload)
-	err := b.Payload.FromExecutableData(ed)
+	err := b.Payload.FromExecutableData(ed, &parentBlockRoot)
 	if err != nil {
 		return err
 	}
@@ -203,6 +216,10 @@ func (b *BuilderBid) Build(
 	}
 
 	b.BlindedBlobsBundle = b.BlobsBundle.Blinded(spec, tree.GetHashFn())
+
+	b.ParentBlockRoot = parentBlockRoot
+	b.Slot = slot
+	b.ProposerIndex = proposerIndex
 
 	return nil
 }
@@ -221,12 +238,6 @@ func (b *BuilderBid) SetValue(value *big.Int) {
 
 func (b *BuilderBid) SetPubKey(pk beacon.BLSPubkey) {
 	b.PubKey = pk
-}
-
-func (b *BuilderBid) SetContext(parentBlockRoot tree.Root, slot beacon.Slot, proposerIndex beacon.ValidatorIndex) {
-	b.ParentBlockRoot = parentBlockRoot
-	b.Slot = slot
-	b.ProposerIndex = proposerIndex
 }
 
 func (b *BuilderBid) Sign(
@@ -249,9 +260,11 @@ func (b *BuilderBid) Sign(
 
 type ExecutionPayload struct {
 	*deneb.ExecutionPayload
+	Source     *api.ExecutableData
+	BeaconRoot *tree.Root
 }
 
-func (p *ExecutionPayload) FromExecutableData(ed *api.ExecutableData) error {
+func (p *ExecutionPayload) FromExecutableData(ed *api.ExecutableData, beaconRoot *tree.Root) error {
 	if ed == nil {
 		return fmt.Errorf("nil execution payload")
 	}
@@ -296,7 +309,18 @@ func (p *ExecutionPayload) FromExecutableData(ed *api.ExecutableData) error {
 	}
 	p.BlobGasUsed = view.Uint64View(*ed.BlobGasUsed)
 	p.ExcessBlobGas = view.Uint64View(*ed.ExcessBlobGas)
+	p.BeaconRoot = beaconRoot
+	p.Source = ed
 	return nil
+}
+
+func (p *ExecutionPayload) ToExecutableData() (*api.ExecutableData, *el_common.Hash, error) {
+	if p.Source == nil {
+		return nil, nil, fmt.Errorf("nil execution payload")
+	}
+	var beaconRoot el_common.Hash
+	copy(beaconRoot[:], p.BeaconRoot[:])
+	return p.Source, &beaconRoot, nil
 }
 
 func (p *ExecutionPayload) GetBlockHash() tree.Root {

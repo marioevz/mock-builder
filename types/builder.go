@@ -1,7 +1,6 @@
 package builder_types
 
 import (
-	api "github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/marioevz/mock-builder/types/common"
 	beacon "github.com/protolambda/zrnt/eth2/beacon/common"
 )
@@ -12,6 +11,6 @@ type Builder interface {
 	GetBuiltPayloadsCount() int
 	GetSignedBeaconBlockCount() int
 	GetSignedBeaconBlocks() map[beacon.Slot]common.SignedBeaconResponse
-	GetModifiedPayloads() map[beacon.Slot]*api.ExecutableData
-	GetBuiltPayloads() map[beacon.Slot]*api.ExecutableData
+	GetModifiedPayloads() map[beacon.Slot]common.ExecutionPayload
+	GetBuiltPayloads() map[beacon.Slot]common.BuilderBid
 }
