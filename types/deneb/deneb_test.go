@@ -139,8 +139,10 @@ func TestBidHashTreeRoot(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("htr-%d", i), func(t *testing.T) {
 			builderBid := BuilderBid{}
-			json.Unmarshal([]byte(tc.jsonBid), &builderBid)
-
+			err := json.Unmarshal([]byte(tc.jsonBid), &builderBid)
+			if err != nil {
+				t.Errorf("failed to unmarshal json: %v", err)
+			}
 			bidHash := builderBid.HashTreeRoot(configs.Mainnet, tree.GetHashFn())
 			expectedHash := el_common.HexToHash(tc.expectedHash)
 			if !bytes.Equal(bidHash[:], expectedHash[:]) {
