@@ -83,9 +83,6 @@ func (b *BuilderBid) ValidateReveal(publicKey *blsu.Pubkey, signedBeaconResponse
 	}
 
 	for i, signedBlindedBlobSidecar := range sbb.SignedBlindedBlobSidecars {
-		fullBlob := b.BlobsBundle.BlobsBundle.Blobs[i]
-		commitment := b.BlobsBundle.BlobsBundle.KZGCommitments[i]
-		proof := b.BlobsBundle.BlobsBundle.KZGProofs[i]
 
 		blobSidecar := deneb.BlobSidecar{
 			BlockRoot:       blockRoot,
@@ -93,9 +90,9 @@ func (b *BuilderBid) ValidateReveal(publicKey *blsu.Pubkey, signedBeaconResponse
 			Slot:            slot,
 			BlockParentRoot: b.ParentBlockRoot,
 			ProposerIndex:   b.ProposerIndex,
-			Blob:            fullBlob,
-			KZGCommitment:   commitment,
-			KZGProof:        proof,
+			Blob:            b.BlobsBundle.BlobsBundle.Blobs[i],
+			KZGCommitment:   b.BlobsBundle.BlobsBundle.KZGCommitments[i],
+			KZGProof:        b.BlobsBundle.BlobsBundle.KZGProofs[i],
 		}
 
 		// Compare roots
@@ -105,6 +102,12 @@ func (b *BuilderBid) ValidateReveal(publicKey *blsu.Pubkey, signedBeaconResponse
 		if root != rootWant {
 			return nil, fmt.Errorf("unblinded blob sidecar roots don't match: want: %s, got: %s", rootWant, root)
 		}
+
+		s, err := signedBlindedBlobSidecar.Signature.Signature()
+		if err != nil {
+			return nil, fmt.Errorf("unable to validate blob sidecar signature: %v", err)
+		}
+
 		dom := beacon.ComputeDomain(beacon.DOMAIN_BLOB_SIDECAR, forkVersion, *genesisValidatorsRoot)
 		signingRoot := beacon.ComputeSigningRoot(root, dom)
 		if !blsu.Verify(publicKey, signingRoot[:], s) {
