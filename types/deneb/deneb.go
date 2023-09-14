@@ -74,7 +74,7 @@ func (b *BuilderBid) ValidateReveal(publicKey *blsu.Pubkey, signedBeaconResponse
 	}
 	forkVersion := spec.ForkVersion(slot)
 	if forkVersion != spec.DENEB_FORK_VERSION {
-		return nil, fmt.Errorf("invalid fork version")
+		return nil, fmt.Errorf("invalid fork version, expected 0x%x, got 0x%x", spec.DENEB_FORK_VERSION, forkVersion)
 	}
 	dom := beacon.ComputeDomain(beacon.DOMAIN_BEACON_PROPOSER, forkVersion, *genesisValidatorsRoot)
 	signingRoot := beacon.ComputeSigningRoot(blockRoot, dom)
@@ -105,7 +105,7 @@ func (b *BuilderBid) ValidateReveal(publicKey *blsu.Pubkey, signedBeaconResponse
 		if root != rootWant {
 			return nil, fmt.Errorf("unblinded blob sidecar roots don't match: want: %s, got: %s", rootWant, root)
 		}
-		dom := beacon.ComputeDomain(beacon.DOMAIN_BLOB_SIDECAR, spec.ForkVersion(slot), *genesisValidatorsRoot)
+		dom := beacon.ComputeDomain(beacon.DOMAIN_BLOB_SIDECAR, forkVersion, *genesisValidatorsRoot)
 		signingRoot := beacon.ComputeSigningRoot(root, dom)
 		if !blsu.Verify(publicKey, signingRoot[:], s) {
 			return nil, fmt.Errorf("blob sidecar %d invalid signature", i)
