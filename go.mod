@@ -85,4 +85,4 @@ replace github.com/ethereum/go-ethereum => github.com/lightclient/go-ethereum v1
 
 replace github.com/protolambda/eth2api => github.com/marioevz/eth2api v0.0.0-20230823170424-c49aeeefbc40
 
-replace github.com/protolambda/zrnt => github.com/marioevz/zrnt v0.26.2-0.20230913212925-b3d7bca98b12
+replace github.com/protolambda/zrnt => github.com/marioevz/zrnt v0.26.2-0.20230914002258-fc741488bc7b

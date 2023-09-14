@@ -74,7 +74,7 @@ func (b *BuilderBid) ValidateReveal(publicKey *blsu.Pubkey, signedBeaconResponse
 	}
 	forkVersion := spec.ForkVersion(slot)
 	if forkVersion != spec.DENEB_FORK_VERSION {
-		return nil, fmt.Errorf("invalid fork version")
+		return nil, fmt.Errorf("invalid fork version, expected 0x%x, got 0x%x", spec.DENEB_FORK_VERSION, forkVersion)
 	}
 	dom := beacon.ComputeDomain(beacon.DOMAIN_BEACON_PROPOSER, forkVersion, *genesisValidatorsRoot)
 	signingRoot := beacon.ComputeSigningRoot(blockRoot, dom)
