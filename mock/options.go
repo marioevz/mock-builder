@@ -402,12 +402,12 @@ func genPayloadInvalidator(
 					_, err = rand.Read(header.ReceiptHash[:])
 					copy(ed.ReceiptsRoot[:], header.ReceiptHash[:])
 				case INVALIDATE_PAYLOAD_BEACON_ROOT:
-					if header.BeaconRoot == nil {
-						header.BeaconRoot = new(el_common.Hash)
+					if header.ParentBeaconRoot == nil {
+						header.ParentBeaconRoot = new(el_common.Hash)
 					}
-					_, err = rand.Read(header.BeaconRoot[:])
+					_, err = rand.Read(header.ParentBeaconRoot[:])
 					if beaconRoot != nil {
-						copy(beaconRoot[:], header.BeaconRoot[:])
+						copy(beaconRoot[:], header.ParentBeaconRoot[:])
 					}
 				default:
 					panic(fmt.Errorf(

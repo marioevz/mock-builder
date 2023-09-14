@@ -54,7 +54,6 @@ type UnblindedResponseData struct {
 }
 
 func (b *BuilderBid) ValidateReveal(publicKey *blsu.Pubkey, signedBeaconResponse common.SignedBeaconResponse, spec *beacon.Spec, slot beacon.Slot, genesisValidatorsRoot *tree.Root) (*common.UnblindedResponse, error) {
-
 	sbb, ok := signedBeaconResponse.(*SignedBlindedBlockContents)
 	if !ok {
 		return nil, fmt.Errorf("invalid signed beacon response")
@@ -73,11 +72,14 @@ func (b *BuilderBid) ValidateReveal(publicKey *blsu.Pubkey, signedBeaconResponse
 	if beaconBlock.HashTreeRoot(spec, tree.GetHashFn()) != blockRoot {
 		return nil, fmt.Errorf("unblinded block root does not match")
 	}
-
-	dom := beacon.ComputeDomain(beacon.DOMAIN_BEACON_PROPOSER, spec.ForkVersion(slot), *genesisValidatorsRoot)
+	forkVersion := spec.ForkVersion(slot)
+	if forkVersion != spec.DENEB_FORK_VERSION {
+		return nil, fmt.Errorf("invalid fork version")
+	}
+	dom := beacon.ComputeDomain(beacon.DOMAIN_BEACON_PROPOSER, forkVersion, *genesisValidatorsRoot)
 	signingRoot := beacon.ComputeSigningRoot(blockRoot, dom)
 	if !blsu.Verify(publicKey, signingRoot[:], s) {
-		return nil, fmt.Errorf("block invalid signature")
+		return nil, fmt.Errorf("invalid block signature")
 	}
 
 	for i, signedBlindedBlobSidecar := range sbb.SignedBlindedBlobSidecars {
@@ -117,11 +119,6 @@ func (b *BuilderBid) ValidateReveal(publicKey *blsu.Pubkey, signedBeaconResponse
 			BlobsBundle:      b.BlobsBundle.BlobsBundle,
 		},
 	}, nil
-}
-
-func (sbb *SignedBlindedBlockContents) Validate(pk *blsu.Pubkey, spec *beacon.Spec, slot beacon.Slot, genesisValidatorsRoot *tree.Root, ep common.ExecutionPayload, bb common.BlobsBundle) error {
-
-	return nil
 }
 
 type BlobsBundle struct {
