@@ -66,6 +66,8 @@ type MockBuilder struct {
 	receivedSignedBeaconBlocksMutex sync.Mutex
 	signedBeaconBlock               map[tree.Root]bool
 	signedBeaconBlockMutex          sync.Mutex
+	validationErrors                map[beacon.Slot]error
+	validationErrorsMutex           sync.Mutex
 
 	// Configuration object
 	cfg *config
@@ -105,6 +107,7 @@ func NewMockBuilder(
 			map[beacon.Slot]common.SignedBeaconResponse,
 		),
 		signedBeaconBlock: make(map[tree.Root]bool),
+		validationErrors:  make(map[beacon.Slot]error),
 
 		cfg: &config{
 			host:              DEFAULT_BUILDER_HOST,
@@ -214,6 +217,9 @@ func NewMockBuilder(
 		"/mock/invalid/payload/{type}/epoch/{epoch:[0-9]+}",
 		m.HandleMockEnableInvalidatePayload,
 	).Methods("POST")
+
+	// Statistics Handlers
+	router.HandleFunc("/mock/stats/validation_errors", m.HandleValidationErrors).Methods("GET")
 
 	m.srv = &http.Server{
 		Handler: router,
@@ -339,6 +345,13 @@ func (m *MockBuilder) GetModifiedPayloads() map[beacon.Slot]common.ExecutionPayl
 	return mapCopy
 }
 
+func (m *MockBuilder) GetSignedBeaconBlock(slot beacon.Slot) (common.SignedBeaconResponse, bool) {
+	m.receivedSignedBeaconBlocksMutex.Lock()
+	defer m.receivedSignedBeaconBlocksMutex.Unlock()
+	signedBeaconResponse, ok := m.receivedSignedBeaconBlocks[slot]
+	return signedBeaconResponse, ok
+}
+
 func (m *MockBuilder) GetSignedBeaconBlocks() map[beacon.Slot]common.SignedBeaconResponse {
 	m.receivedSignedBeaconBlocksMutex.Lock()
 	defer m.receivedSignedBeaconBlocksMutex.Unlock()
@@ -347,6 +360,20 @@ func (m *MockBuilder) GetSignedBeaconBlocks() map[beacon.Slot]common.SignedBeaco
 		mapCopy[k] = v
 	}
 	return mapCopy
+}
+
+func (m *MockBuilder) GetValidationErrors() map[beacon.Slot]error {
+	m.validationErrorsMutex.Lock()
+	defer m.validationErrorsMutex.Unlock()
+	mapCopy := make(map[beacon.Slot]error)
+	for k, v := range m.validationErrors {
+		mapCopy[k] = v
+	}
+	return mapCopy
+}
+
+func (m *MockBuilder) GetValidationErrorsCount() int {
+	return len(m.validationErrors)
 }
 
 func (m *MockBuilder) HandleValidators(
@@ -604,6 +631,19 @@ func (m *MockBuilder) HandleGetExecutionPayloadHeader(
 	}
 
 	blockHead, err = m.cl.BlockV2(context.Background(), blockId)
+	if err != nil {
+		logrus.WithFields(logrus.Fields{
+			"builder_id": m.cfg.id,
+			"slot":       slot,
+			"err":        err,
+		}).Error("Error getting block from CL")
+		http.Error(
+			w,
+			"Unable to respond to header request",
+			http.StatusInternalServerError,
+		)
+		return
+	}
 
 	if randaoMix == nil || (withdrawalsRequired && withdrawals == nil) {
 		// We are missing information from the CL, request the full state to reproduce
@@ -1110,7 +1150,6 @@ func (m *MockBuilder) HandleSubmitBlindedBlock(
 		return
 	}
 
-
 	// First try to find out the slot to get the version of the block
 	var slot beacon.Slot
 	{
@@ -1154,6 +1193,7 @@ func (m *MockBuilder) HandleSubmitBlindedBlock(
 		logrus.WithFields(logrus.Fields{
 			"builder_id": m.cfg.id,
 			"err":        err,
+			"request":    string(requestBytes),
 		}).Error("Unable to parse request body")
 		http.Error(w, "Unable to parse request body", http.StatusBadRequest)
 		return
@@ -1165,6 +1205,7 @@ func (m *MockBuilder) HandleSubmitBlindedBlock(
 		logrus.WithFields(logrus.Fields{
 			"builder_id": m.cfg.id,
 			"slot":       slot,
+			"request":    string(requestBytes),
 		}).Error("Could not find payload in history")
 		http.Error(w, "Unable to get payload", http.StatusInternalServerError)
 		return
@@ -1211,9 +1252,13 @@ func (m *MockBuilder) HandleSubmitBlindedBlock(
 		pk, signedBeaconResponse, m.cfg.spec, slot, m.cl.Config.GenesisValidatorsRoot,
 	)
 	if err != nil {
+		m.validationErrorsMutex.Lock()
+		m.validationErrors[signedBeaconResponse.Slot()] = err
+		m.validationErrorsMutex.Unlock()
 		logrus.WithFields(logrus.Fields{
 			"builder_id": m.cfg.id,
 			"slot":       slot,
+			"request":    string(requestBytes),
 			"err":        err,
 		}).Error("Error validating signed beacon response")
 		http.Error(
@@ -1603,6 +1648,33 @@ func (m *MockBuilder) HandleMockEnableInvalidatePayload(
 		return
 	}
 
+	w.WriteHeader(http.StatusOK)
+}
+
+// Stats handlers
+
+func (m *MockBuilder) HandleValidationErrors(
+	w http.ResponseWriter, req *http.Request,
+) {
+	// Return the map of validation errors
+	m.validationErrorsMutex.Lock()
+	defer m.validationErrorsMutex.Unlock()
+	validationErrors := make(map[string]string)
+	for k, v := range m.validationErrors {
+		validationErrors[k.String()] = v.Error()
+	}
+	if err := serveJSON(w, validationErrors); err != nil {
+		logrus.WithFields(logrus.Fields{
+			"builder_id": m.cfg.id,
+			"err":        err,
+		}).Error("Error writing JSON response to CL")
+		http.Error(
+			w,
+			"Unable to respond to header request",
+			http.StatusInternalServerError,
+		)
+		return
+	}
 	w.WriteHeader(http.StatusOK)
 }
 
