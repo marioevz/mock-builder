@@ -5,7 +5,7 @@ go 1.20
 require (
 	github.com/ethereum/go-ethereum v1.13.1
 	github.com/gorilla/mux v1.8.0
-	github.com/marioevz/eth-clients v0.0.0-20230823175101-fdc85382188d
+	github.com/marioevz/eth-clients v0.0.0-20230925172743-e379ee1ecd6e
 	github.com/protolambda/bls12-381-util v0.0.0-20220416220906-d8552aa452c7
 	github.com/protolambda/eth2api v0.0.0-20230316214135-5f8afbd6d05d
 	github.com/protolambda/zrnt v0.30.0
@@ -77,6 +77,6 @@ require (
 	rsc.io/tmplfunc v0.0.3 // indirect
 )
 
-replace github.com/protolambda/eth2api => github.com/marioevz/eth2api v0.0.0-20230823170424-c49aeeefbc40
+replace github.com/protolambda/eth2api => github.com/marioevz/eth2api v0.0.0-20230922201437-72bd1301e033
 
-replace github.com/protolambda/zrnt => github.com/marioevz/zrnt v0.26.2-0.20230914180617-c828a93a4d2a
+replace github.com/protolambda/zrnt => github.com/marioevz/zrnt v0.26.2-0.20230922170744-1bd341bc7f0f
