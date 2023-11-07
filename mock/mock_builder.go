@@ -1171,7 +1171,7 @@ func (m *MockBuilder) HandleSubmitBlindedBlock(
 		signedBeaconResponse common.SignedBeaconResponse
 	)
 	if m.cfg.spec.SlotToEpoch(slot) >= m.cfg.spec.DENEB_FORK_EPOCH {
-		signedBeaconResponse = &deneb.SignedBlindedBlockContents{}
+		signedBeaconResponse = &deneb.SignedBeaconResponse{}
 	} else if m.cfg.spec.SlotToEpoch(slot) >= m.cfg.spec.CAPELLA_FORK_EPOCH {
 		signedBeaconResponse = &capella.SignedBeaconResponse{}
 	} else if m.cfg.spec.SlotToEpoch(slot) >= m.cfg.spec.BELLATRIX_FORK_EPOCH {

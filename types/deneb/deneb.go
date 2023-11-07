@@ -1,6 +1,7 @@
 package deneb
 
 import (
+	"bytes"
 	"fmt"
 	"math/big"
 
@@ -16,36 +17,32 @@ import (
 
 const Version = "deneb"
 
-type SignedBlindedBlockContents struct {
-	// We use the unblinded version of the
-	SignedBlindedBeaconBlock  deneb.SignedBlindedBeaconBlock   `json:"signed_blinded_block" yaml:"signed_blinded_block"`
-	SignedBlindedBlobSidecars []deneb.SignedBlindedBlobSidecar `json:"signed_blinded_blob_sidecars" yaml:"signed_blinded_blob_sidecars"`
-}
+type SignedBeaconResponse deneb.SignedBlindedBeaconBlock
 
-func (s *SignedBlindedBlockContents) ExecutionPayloadHash() el_common.Hash {
+func (s *SignedBeaconResponse) ExecutionPayloadHash() el_common.Hash {
 	var hash el_common.Hash
-	copy(hash[:], s.SignedBlindedBeaconBlock.Message.Body.ExecutionPayloadHeader.BlockHash[:])
+	copy(hash[:], s.Message.Body.ExecutionPayloadHeader.BlockHash[:])
 	return hash
 }
 
-func (s *SignedBlindedBlockContents) Root(spec *beacon.Spec) tree.Root {
-	return s.SignedBlindedBeaconBlock.Message.HashTreeRoot(spec, tree.GetHashFn())
+func (s *SignedBeaconResponse) Root(spec *beacon.Spec) tree.Root {
+	return s.Message.HashTreeRoot(spec, tree.GetHashFn())
 }
 
-func (s *SignedBlindedBlockContents) StateRoot() tree.Root {
-	return s.SignedBlindedBeaconBlock.Message.StateRoot
+func (s *SignedBeaconResponse) StateRoot() tree.Root {
+	return s.Message.StateRoot
 }
 
-func (s *SignedBlindedBlockContents) Slot() beacon.Slot {
-	return s.SignedBlindedBeaconBlock.Message.Slot
+func (s *SignedBeaconResponse) Slot() beacon.Slot {
+	return s.Message.Slot
 }
 
-func (s *SignedBlindedBlockContents) ProposerIndex() beacon.ValidatorIndex {
-	return s.SignedBlindedBeaconBlock.Message.ProposerIndex
+func (s *SignedBeaconResponse) ProposerIndex() beacon.ValidatorIndex {
+	return s.Message.ProposerIndex
 }
 
-func (s *SignedBlindedBlockContents) BlockSignature() *beacon.BLSSignature {
-	return &s.SignedBlindedBeaconBlock.Signature
+func (s *SignedBeaconResponse) BlockSignature() *beacon.BLSSignature {
+	return &s.Signature
 }
 
 type UnblindedResponseData struct {
@@ -54,18 +51,18 @@ type UnblindedResponseData struct {
 }
 
 func (b *BuilderBid) ValidateReveal(publicKey *blsu.Pubkey, signedBeaconResponse common.SignedBeaconResponse, spec *beacon.Spec, slot beacon.Slot, genesisValidatorsRoot *tree.Root) (*common.UnblindedResponse, error) {
-	sbb, ok := signedBeaconResponse.(*SignedBlindedBlockContents)
+	sbb, ok := signedBeaconResponse.(*SignedBeaconResponse)
 	if !ok {
 		return nil, fmt.Errorf("invalid signed beacon response")
 	}
 
-	blockRoot := sbb.SignedBlindedBeaconBlock.Message.HashTreeRoot(spec, tree.GetHashFn())
-	s, err := sbb.SignedBlindedBeaconBlock.Signature.Signature()
+	blockRoot := sbb.Message.HashTreeRoot(spec, tree.GetHashFn())
+	s, err := sbb.Signature.Signature()
 	if err != nil {
 		return nil, fmt.Errorf("unable to validate block signature: %v", err)
 	}
 
-	beaconBlock, err := sbb.SignedBlindedBeaconBlock.Message.Unblind(spec, b.Payload.ExecutionPayload)
+	beaconBlock, err := sbb.Message.Unblind(spec, b.Payload.ExecutionPayload)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unblind block: %v", err)
 	}
@@ -82,36 +79,10 @@ func (b *BuilderBid) ValidateReveal(publicKey *blsu.Pubkey, signedBeaconResponse
 		return nil, fmt.Errorf("invalid block signature")
 	}
 
-	for i, signedBlindedBlobSidecar := range sbb.SignedBlindedBlobSidecars {
-
-		blobSidecar := deneb.BlobSidecar{
-			BlockRoot:       blockRoot,
-			Index:           deneb.BlobIndex(i),
-			Slot:            slot,
-			BlockParentRoot: b.ParentBlockRoot,
-			ProposerIndex:   b.ProposerIndex,
-			Blob:            b.BlobsBundle.BlobsBundle.Blobs[i],
-			KZGCommitment:   b.BlobsBundle.BlobsBundle.KZGCommitments[i],
-			KZGProof:        b.BlobsBundle.BlobsBundle.KZGProofs[i],
-		}
-
-		// Compare roots
-		rootWant := blobSidecar.HashTreeRoot(spec, tree.GetHashFn())
-		// Calculating root of a blinded blob sidecar does not require the spec because only the blob length is spec-dependent
-		root := signedBlindedBlobSidecar.Message.HashTreeRoot(tree.GetHashFn())
-		if root != rootWant {
-			return nil, fmt.Errorf("unblinded blob sidecar roots don't match: want: %s, got: %s", rootWant, root)
-		}
-
-		s, err := signedBlindedBlobSidecar.Signature.Signature()
-		if err != nil {
-			return nil, fmt.Errorf("unable to validate blob sidecar signature: %v", err)
-		}
-
-		dom := beacon.ComputeDomain(beacon.DOMAIN_BLOB_SIDECAR, forkVersion, *genesisValidatorsRoot)
-		signingRoot := beacon.ComputeSigningRoot(root, dom)
-		if !blsu.Verify(publicKey, signingRoot[:], s) {
-			return nil, fmt.Errorf("blob sidecar %d invalid signature", i)
+	// Verify kzg commitments in signed header
+	for i, kzgCommitment := range sbb.Message.Body.BlobKZGCommitments {
+		if !bytes.Equal(b.BlobsBundle.KZGCommitments[i][:], kzgCommitment[:]) {
+			return nil, fmt.Errorf("invalid kzg commitment")
 		}
 	}
 
@@ -165,7 +136,7 @@ type BuilderBid struct {
 	Payload                  *ExecutionPayload             `json:"-" yaml:"-"`
 	Header                   *deneb.ExecutionPayloadHeader `json:"header" yaml:"header"`
 	BlobsBundle              *BlobsBundle                  `json:"-" yaml:"-"`
-	BlindedBlobsBundle       *deneb.BlindedBlobsBundle     `json:"blinded_blobs_bundle" yaml:"blinded_blobs_bundle"`
+	BlobKZGCommitments       *beacon.KZGCommitments        `json:"blob_kzg_commitments" yaml:"blob_kzg_commitments"`
 	Value                    view.Uint256View              `json:"value"  yaml:"value"`
 	PubKey                   beacon.BLSPubkey              `json:"pubkey" yaml:"pubkey"`
 	common.BuilderBidContext `json:"-" yaml:"-"`
@@ -180,7 +151,7 @@ func (b *BuilderBid) Version() string {
 func (b *BuilderBid) HashTreeRoot(spec *beacon.Spec, hFn tree.HashFn) tree.Root {
 	return hFn.HashTreeRoot(
 		b.Header,
-		spec.Wrap(b.BlindedBlobsBundle),
+		spec.Wrap(b.BlobKZGCommitments),
 		&b.Value,
 		&b.PubKey,
 	)
@@ -215,7 +186,7 @@ func (b *BuilderBid) Build(
 		return err
 	}
 
-	b.BlindedBlobsBundle = b.BlobsBundle.Blinded(spec, tree.GetHashFn())
+	b.BlobKZGCommitments = &b.BlobsBundle.KZGCommitments
 
 	b.ParentBlockRoot = parentBlockRoot
 	b.Slot = slot
