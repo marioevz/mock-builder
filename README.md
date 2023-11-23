@@ -80,4 +80,4 @@ The callback can then use the slot number to determine whether to throw an error
 - `POST` `/mock/invalid/payload/{type}/<slot|epoch>/{slot/epoch number}`: Enables specified [type](#payload-invalidation-types) of modification to payload built starting at the slot or epoch specified
 
 # Statistics
-- `GET` `/mock/stats/validation_errors`: Returns a JSON containing all the errors encountered when validating the submitted signed blinded responses from the consensus client (e.g. Invalid signature on submitted blinded block, invalid signature on submitted blinded blob sidecar)
+- `GET` `/mock/stats/validation_errors`: Returns a JSON containing all the errors encountered when validating the submitted signed blinded responses from the consensus client (e.g. Invalid signature on submitted blinded block)
