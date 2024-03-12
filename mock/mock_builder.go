@@ -56,6 +56,8 @@ type MockBuilder struct {
 	// Payload/Blocks history maps
 	suggestedFeeRecipients          map[beacon.BLSPubkey]el_common.Address
 	suggestedFeeRecipientsMutex     sync.Mutex
+	requestedHeaders                map[beacon.Slot]GetHeaderRequestInfo
+	requestedHeadersMutex           sync.Mutex
 	builtPayloads                   map[beacon.Slot]common.BuilderBid
 	builtPayloadsMutex              sync.Mutex
 	modifiedPayloads                map[beacon.Slot]common.ExecutionPayload
@@ -71,6 +73,12 @@ type MockBuilder struct {
 
 	// Configuration object
 	cfg *config
+}
+
+type GetHeaderRequestInfo struct {
+	Slot   beacon.Slot
+	Parent el_common.Hash
+	Pubkey beacon.BLSPubkey
 }
 
 var _ builder_types.Builder = (*MockBuilder)(nil)
@@ -100,6 +108,7 @@ func NewMockBuilder(
 		suggestedFeeRecipients: make(
 			map[beacon.BLSPubkey]el_common.Address,
 		),
+		requestedHeaders:    make(map[beacon.Slot]GetHeaderRequestInfo),
 		builtPayloads:       make(map[beacon.Slot]common.BuilderBid),
 		modifiedPayloads:    make(map[beacon.Slot]common.ExecutionPayload),
 		validatorPublicKeys: make(map[beacon.Slot]*beacon.BLSPubkey),
@@ -376,6 +385,16 @@ func (m *MockBuilder) GetValidationErrorsCount() int {
 	return len(m.validationErrors)
 }
 
+func (m *MockBuilder) GetHeaderRequests() map[beacon.Slot]GetHeaderRequestInfo {
+	m.requestedHeadersMutex.Lock()
+	defer m.requestedHeadersMutex.Unlock()
+	mapCopy := make(map[beacon.Slot]GetHeaderRequestInfo)
+	for k, v := range m.requestedHeaders {
+		mapCopy[k] = v
+	}
+	return mapCopy
+}
+
 func (m *MockBuilder) HandleValidators(
 	w http.ResponseWriter,
 	req *http.Request,
@@ -569,6 +588,15 @@ func (m *MockBuilder) HandleGetExecutionPayloadHeader(
 	m.validatorPublicKeysMutex.Lock()
 	m.validatorPublicKeys[slot] = &pubkey
 	m.validatorPublicKeysMutex.Unlock()
+
+	// Add the request to the history
+	m.requestedHeadersMutex.Lock()
+	m.requestedHeaders[slot] = GetHeaderRequestInfo{
+		Slot:   slot,
+		Parent: parentHash,
+		Pubkey: pubkey,
+	}
+	m.requestedHeadersMutex.Unlock()
 
 	// Engine API Directive Versions and information required to build the payload
 	var (
@@ -960,9 +988,7 @@ func (m *MockBuilder) HandleGetExecutionPayloadHeader(
 	}
 
 	// We are ready to respond to the CL
-	var (
-		builderBid common.BuilderBid
-	)
+	var builderBid common.BuilderBid
 
 	m.cfg.mutex.Lock()
 	builderBidVersionResolver := m.cfg.builderBidVersionResolver
@@ -1038,12 +1064,16 @@ func (m *MockBuilder) HandleGetExecutionPayloadHeader(
 	}
 	builderBid.SetPubKey(m.pkBeacon)
 
-	logrus.WithFields(logrus.Fields{
+	payloadFields := logrus.Fields{
 		"builder_id": m.cfg.id,
 		"payload":    p.BlockHash.String(),
 		"value":      bValue.String(),
 		"fork":       fork,
-	}).Info("Built payload from EL")
+	}
+	if p.BlobGasUsed != nil {
+		payloadFields["blob_gas_used"] = *p.BlobGasUsed
+	}
+	logrus.WithFields(payloadFields).Info("Built payload from EL")
 
 	builtBidRoot := builderBid.HashTreeRoot(m.cfg.spec, tree.GetHashFn())
 	bidJson, _ := json.Marshal(builderBid)
